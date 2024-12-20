@@ -1,0 +1,1 @@
+jet -source=sqlite -dsn="/home/ubuntu/data/keysdb.sqlite3" -schema=main -path=../../internal/db/.gen

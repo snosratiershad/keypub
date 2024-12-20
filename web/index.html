@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <script defer data-domain="keypub.sh" src="https://plausible.io/js/script.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        /* Font imports */
+        @font-face {
+            font-family: 'IBM Plex Mono';
+            src: url('/fonts/IBMPlexMono-Medium.ttf') format('truetype');
+            font-weight: 500;
+            font-style: normal;
+            font-display: swap;
+        }
+        
+        @font-face {
+            font-family: 'IBM Plex Mono';
+            src: url('/fonts/IBMPlexMono-Bold.ttf') format('truetype');
+            font-weight: 700;
+            font-style: normal;
+            font-display: swap;
+        }
+
+        /* Base styles */
+        :root {
+            --bg-primary: #1E1E2E;
+            --bg-secondary: #282A36;
+            --bg-hover: #2D2D3D;
+            --header-bg: #FBCB0A;
+            --border-color: #4A4B53;
+            --text-primary: #ffffff;
+            --text-secondary: #AAAAAA;
+            --text-accent: #90A959;
+            --text-command: #BD93F9;
+            --font-family: "IBM Plex Mono", monospace;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            font-family: var(--font-family);
+            font-weight: 500;
+            min-height: 100vh;
+            padding: 1rem;
+        }
+
+        /* Terminal styles */
+        .terminal-window {
+            max-width: 1000px;
+            margin: 0 auto;
+            background-color: var(--bg-secondary);
+            border-radius: 0rem;
+            border: 1px solid var(--border-color);
+            overflow: hidden;
+        }
+
+        .terminal-header {
+            background-color: var(--header-bg);
+            padding: 0.5rem 1rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .terminal-content {
+            padding: 1rem;
+        }
+
+        /* ASCII art */
+        .ascii-art {
+            color: var(--header-bg);
+            margin: 1rem 0;
+            font-weight: bold;
+            white-space: pre;
+            overflow-x: auto;
+            font-size: 18px;
+        }
+
+        /* Common text elements */
+        .comment, .output {
+            color: var(--text-secondary);
+            line-height: 1.4;
+            margin: 0.5rem 0;
+        }
+
+        .comment {
+            max-width: 600px;
+            margin: 1rem 0;
+        }
+
+        .output {
+            margin-left: 1rem;
+            white-space: pre-line;
+        }
+
+        /* Command prompt */
+        .prompt-block {
+            margin-top: 1rem;
+            display: flex;
+            align-items: flex-start;
+            gap: 0.5rem;
+        }
+
+        .prompt {
+            color: var(--text-accent);
+            white-space: nowrap;
+        }
+
+        .command {
+            color: var(--text-primary);
+            word-break: break-all;
+        }
+
+        /* Lists */
+        .features-list, .usecases-list {
+            list-style: none;
+            margin: 1rem 0;
+            padding-left: 1rem;
+        }
+
+        .features-list li, .usecases-list li {
+            color: var(--text-secondary);
+            margin: 0.5rem 0;
+            display: flex;
+            align-items: flex-start;
+            gap: 0.5rem;
+            line-height: 1.4;
+        }
+
+        .features-list li::before, .usecases-list li::before {
+            content: "•";
+            color: var(--text-accent);
+            flex-shrink: 0;
+        }
+
+        /* Help table */
+        .help-table {
+            margin: 1rem 0;
+            border-collapse: separate;
+            border-spacing: 0;
+            width: 100%;
+            background-color: var(--bg-primary);
+            border-radius: 0.5rem;
+            overflow: hidden;
+        }
+
+        .help-table th,
+        .help-table td {
+            padding: 0.75rem 1rem;
+            text-align: left;
+            border-bottom: 1px solid var(--border-color);
+            vertical-align: top;
+        }
+
+        .help-table th {
+            background-color: #1A1B26;
+            color: #808080;
+            font-weight: 500;
+        }
+
+        .help-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        .help-table tr:hover td {
+            background-color: var(--bg-hover);
+        }
+
+        .command-cell {
+            color: var(--text-command);
+        }
+
+        .description-cell {
+            color: var(--text-secondary);
+        }
+
+        .section-title {
+            color: var(--text-accent);
+            margin: 2rem 0 1rem;
+            font-weight: bold;
+        }
+
+        /* Responsive styles */
+        @media screen and (max-width: 768px) {
+            body {
+                padding: 0rem;
+            }
+            
+            .terminal-content {
+                padding: 0.75rem;
+            }
+
+            .ascii-art {
+                font-family: "IBM Plex Mono", monospace;
+                font-size: 12px;
+            }
+
+            .help-table td {
+                display: block;
+            }
+
+            .command-cell {
+                border-bottom: none;
+                padding-bottom: 0.25rem;
+            }
+
+            .description-cell {
+                padding-top: 0.25rem;
+                padding-left: 2rem;
+            }
+
+            .help-table th:last-child {
+                display: none;
+            }
+        }
+
+        @media screen and (max-width: 375px) {
+            .ascii-art {
+                font-family: "IBM Plex Mono", monospace;
+                font-size: 8px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="terminal-window">
+        <div class="terminal-header">
+        </div>
+        
+        <div class="terminal-content">
+            <pre class="ascii-art">
+██   ██ ███████ ██    ██ ██████  ██    ██ ██████
+██  ██  ██       ██  ██  ██   ██ ██    ██ ██   ██
+█████   █████     ████   ██████  ██    ██ ██████
+██  ██  ██         ██    ██      ██    ██ ██   ██
+██   ██ ███████    ██    ██       ██████  ██████</pre>
+            
+            <div class="comment">A verified directory for SSH public keys.
+Connect identities to keys without managing authentication.</div>
+            
+            <div class="prompt-block">
+                <span class="prompt">$</span>
+                <span class="command">ssh keypub.sh about</span>
+            </div>
+            
+            <ul class="features-list">
+                <li>Verified registry linking SSH public keys to email addresses</li>
+                <li>No installation or configuration needed - works with your existing SSH setup</li>
+                <li>Privacy-focused: you control what information is public or private</li>
+                <li>Simple email verification process</li>
+                <li>Free public service</li>
+            </ul>
+            
+            <div class="prompt-block">
+                <span class="prompt">$</span>
+                <span class="command">ssh keypub.sh register alice@example.com</span>
+            </div>
+            
+            <div class="output">[info] Verification email sent to alice@example.com</div>
+            <div class="output">[info] Please check your inbox and run: ssh keypub.sh confirm VERIFICATION-CODE</div>
+
+            <div class="prompt-block">
+                <span class="prompt">$</span>
+                <span class="command">ssh keypub.sh confirm 346758</span>
+            </div>
+
+            <div class="output">[success] Key registered successfully</div>
+            <div class="output">[info] Fingerprint: SHA256:llcK7K7Zc6JGHMnrekqr2X/lVkJEoaam4S5eeCPOg0w</div>
+            <div class="output">[info] Email: alice@example.com verified</div>
+            
+            <div class="prompt-block">
+                <span class="prompt">$</span>
+                <span class="command">ssh keypub.sh help</span>
+            </div>
+            
+            <div class="output">KeyPub.sh uses your SSH public key as your identity. Access the service via SSH commands. Reference other users by email or key fingerprint. For json output append `--json` or `-j`</div>
+            
+            <div class="table-container">
+                <table class="help-table">
+                    <thead>
+                        <tr>
+                            <th>Command</th>
+                            <th>Description</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td class="command-cell">register &lt;email&gt;</td>
+                            <td class="description-cell">Register your SSH key with an email address</td>
+                        </tr>
+                        <tr>
+                            <td class="command-cell">confirm &lt;code&gt;</td>
+                            <td class="description-cell">Verify email with code from confirmation mail</td>
+                        </tr>
+                        <tr>
+                            <td class="command-cell">whoami</td>
+                            <td class="description-cell">Show your registration details</td>
+                        </tr>
+                        <tr>
+                            <td class="command-cell">set email &lt;new-email&gt;</td>
+                            <td class="description-cell">Change registered email address</td>
+                        </tr>
+                        <tr>
+                            <td class="command-cell">allow &lt;email&gt;</td>
+                            <td class="description-cell">Grant email visibility to another user</td>
+                        </tr>
+                        <tr>
+                            <td class="command-cell">deny &lt;email&gt;</td>
+                            <td class="description-cell">Revoke email visibility from user</td>
+                        </tr>
+                        <tr>
+                            <td class="command-cell">get email from &lt;fingerprint&gt;</td>
+                            <td class="description-cell">Get email for key (if authorized)</td>
+                        </tr>
+                        <tr>
+                            <td class="command-cell">get handle from &lt;fingerprint&gt;</td>
+                            <td class="description-cell">Get public handle for key</td>
+                        </tr>
+                        <tr>
+                            <td class="command-cell">unregister</td>
+                            <td class="description-cell">Remove your key from registry</td>
+                        </tr>
+                        <tr>
+                            <td class="command-cell">help</td>
+                            <td class="description-cell">Show this help message</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            
+            <div class="prompt-block">
+                <span class="prompt">$</span>
+                <span class="command">alias kp='ssh keypub.sh'</span>
+            </div>
+            
+            <div class="prompt-block">
+                <span class="prompt">$</span>
+                <span class="command">kp why</span>
+            </div>
+
+            <ul class="usecases-list">
+                <li>Single verified identity for all SSH-based applications - register once, use everywhere</li>
+                <li>Perfect for SSH application developers - no need to build and maintain user verification systems</li>
+                <li>Users control their privacy - they decide which applications can access their email</li>
+                <li>Lightweight alternative to OAuth for CLI applications - just use SSH keys that users already have</li>
+                <li>Central identity system that respects privacy and puts users in control</li>
+            </ul>
+        </div>
+    </div>
+</body>
+</html>
