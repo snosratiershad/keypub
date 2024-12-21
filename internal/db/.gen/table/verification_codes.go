@@ -20,7 +20,7 @@ type verificationCodesTable struct {
 	Email       sqlite.ColumnString
 	Fingerprint sqlite.ColumnString
 	Code        sqlite.ColumnString
-	CreatedAt   sqlite.ColumnTimestamp
+	CreatedAt   sqlite.ColumnInteger
 
 	AllColumns     sqlite.ColumnList
 	MutableColumns sqlite.ColumnList
@@ -64,7 +64,7 @@ func newVerificationCodesTableImpl(schemaName, tableName, alias string) verifica
 		EmailColumn       = sqlite.StringColumn("email")
 		FingerprintColumn = sqlite.StringColumn("fingerprint")
 		CodeColumn        = sqlite.StringColumn("code")
-		CreatedAtColumn   = sqlite.TimestampColumn("created_at")
+		CreatedAtColumn   = sqlite.IntegerColumn("created_at")
 		allColumns        = sqlite.ColumnList{EmailColumn, FingerprintColumn, CodeColumn, CreatedAtColumn}
 		mutableColumns    = sqlite.ColumnList{EmailColumn, FingerprintColumn, CodeColumn, CreatedAtColumn}
 	)

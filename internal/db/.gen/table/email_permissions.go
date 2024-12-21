@@ -19,7 +19,7 @@ type emailPermissionsTable struct {
 	// Columns
 	GranterEmail sqlite.ColumnString
 	GranteeEmail sqlite.ColumnString
-	CreatedAt    sqlite.ColumnTimestamp
+	CreatedAt    sqlite.ColumnInteger
 
 	AllColumns     sqlite.ColumnList
 	MutableColumns sqlite.ColumnList
@@ -62,7 +62,7 @@ func newEmailPermissionsTableImpl(schemaName, tableName, alias string) emailPerm
 	var (
 		GranterEmailColumn = sqlite.StringColumn("granter_email")
 		GranteeEmailColumn = sqlite.StringColumn("grantee_email")
-		CreatedAtColumn    = sqlite.TimestampColumn("created_at")
+		CreatedAtColumn    = sqlite.IntegerColumn("created_at")
 		allColumns         = sqlite.ColumnList{GranterEmailColumn, GranteeEmailColumn, CreatedAtColumn}
 		mutableColumns     = sqlite.ColumnList{GranterEmailColumn, GranteeEmailColumn, CreatedAtColumn}
 	)

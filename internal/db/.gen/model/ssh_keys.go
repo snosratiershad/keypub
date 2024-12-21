@@ -7,12 +7,8 @@
 
 package model
 
-import (
-	"time"
-)
-
 type SSHKeys struct {
-	Fingerprint *string `sql:"primary_key"`
 	Email       string
-	CreatedAt   time.Time
+	Fingerprint string
+	CreatedAt   int32
 }

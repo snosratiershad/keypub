@@ -7,12 +7,8 @@
 
 package model
 
-import (
-	"time"
-)
-
 type EmailPermissions struct {
 	GranterEmail string
 	GranteeEmail string
-	CreatedAt    time.Time
+	CreatedAt    int32
 }

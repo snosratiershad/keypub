@@ -7,13 +7,9 @@
 
 package model
 
-import (
-	"time"
-)
-
 type VerificationCodes struct {
 	Email       string
 	Fingerprint string
 	Code        string
-	CreatedAt   time.Time
+	CreatedAt   int32
 }

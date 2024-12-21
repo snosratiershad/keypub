@@ -17,9 +17,9 @@ type sSHKeysTable struct {
 	sqlite.Table
 
 	// Columns
-	Fingerprint sqlite.ColumnString
 	Email       sqlite.ColumnString
-	CreatedAt   sqlite.ColumnTimestamp
+	Fingerprint sqlite.ColumnString
+	CreatedAt   sqlite.ColumnInteger
 
 	AllColumns     sqlite.ColumnList
 	MutableColumns sqlite.ColumnList
@@ -60,19 +60,19 @@ func newSSHKeysTable(schemaName, tableName, alias string) *SSHKeysTable {
 
 func newSSHKeysTableImpl(schemaName, tableName, alias string) sSHKeysTable {
 	var (
-		FingerprintColumn = sqlite.StringColumn("fingerprint")
 		EmailColumn       = sqlite.StringColumn("email")
-		CreatedAtColumn   = sqlite.TimestampColumn("created_at")
-		allColumns        = sqlite.ColumnList{FingerprintColumn, EmailColumn, CreatedAtColumn}
-		mutableColumns    = sqlite.ColumnList{EmailColumn, CreatedAtColumn}
+		FingerprintColumn = sqlite.StringColumn("fingerprint")
+		CreatedAtColumn   = sqlite.IntegerColumn("created_at")
+		allColumns        = sqlite.ColumnList{EmailColumn, FingerprintColumn, CreatedAtColumn}
+		mutableColumns    = sqlite.ColumnList{EmailColumn, FingerprintColumn, CreatedAtColumn}
 	)
 
 	return sSHKeysTable{
 		Table: sqlite.NewTable(schemaName, tableName, alias, allColumns...),
 
 		//Columns
-		Fingerprint: FingerprintColumn,
 		Email:       EmailColumn,
+		Fingerprint: FingerprintColumn,
 		CreatedAt:   CreatedAtColumn,
 
 		AllColumns:     allColumns,
