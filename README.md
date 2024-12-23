@@ -1,6 +1,6 @@
 # KeyPub.sh
 
-A verified directory for SSH public keys, connecting identities to keys without managing authentication. KeyPub.sh allows users to verify ownership of their email addresses and associate them with their SSH public keys, creating a trustworthy, decentralized identity system.
+A verified directory for SSH public keys, connecting identities to keys without managing authentication. KeyPub.sh allows users to verify ownership of their email addresses and associate them with their SSH public keys, creating a trustworthy identity system focused on user privacy.
 
 ## Features
 
