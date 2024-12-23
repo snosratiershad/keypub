@@ -4,12 +4,12 @@ A verified directory for SSH public keys, connecting identities to keys without 
 
 ## Features
 
-- 🔑 Verified registry linking SSH public keys to email addresses
-- 🚀 Zero installation - works with your existing SSH setup
-- 🔒 Privacy-focused: you control what information is public
-- ✉️ Simple email verification process
-- 💫 Free public service
-- 🛠️ Perfect for SSH application developers - no need to build user verification systems
+-  Verified registry linking SSH public keys to email addresses
+-  Zero installation - works with your existing SSH setup
+-  Privacy-focused: you control what information is public
+-  Simple email verification process
+-  Free public service
+-  Perfect for SSH application developers - no need to build user verification systems
 
 ## Quick Start
 
