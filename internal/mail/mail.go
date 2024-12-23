@@ -71,4 +71,3 @@ func (m *MailSender) SendConfirmation(to string, confirmationNumber string, keyF
 
 	return nil
 }
-

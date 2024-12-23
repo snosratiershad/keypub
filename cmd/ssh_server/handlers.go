@@ -3,14 +3,13 @@ package main
 import (
 	"crypto/rand"
 	"fmt"
-	"io"
+	"strings"
 	"time"
 
 	"database/sql"
 	"keypub/internal/db/.gen/table"
 	"keypub/internal/mail"
 
-	"github.com/gliderlabs/ssh"
 	. "github.com/go-jet/jet/v2/sqlite"
 )
 
@@ -25,7 +24,7 @@ func generateVerificationCode() string {
 	for i := range result {
 		// Read a random byte and map it to the charset
 		b := make([]byte, 1)
-		rand.Read(b)
+		_, _ = rand.Read(b)
 		result[i] = charset[b[0]%byte(len(charset))]
 	}
 
@@ -63,9 +62,34 @@ func handleRegister(db *sql.DB, mail_sender *mail.MailSender, to_email string, f
 
 	count := counts[0]
 	if count > 0 {
-		return fmt.Errorf("email and fingerprint combination already exists")
+		return fmt.Errorf("email and fingerprint combination already registered")
 	}
 
+	////////////////////////////
+	// Check if email and fingerprint combination exists using COUNT
+	stmt = SELECT(
+		COUNT(table.VerificationCodes.Fingerprint),
+	).FROM(
+		table.VerificationCodes,
+	).WHERE(
+		table.VerificationCodes.Fingerprint.EQ(String(fingerprint)),
+	)
+
+	counts = nil
+	err = stmt.Query(tx, &counts)
+	if err != nil {
+		return fmt.Errorf("failed to query existing keys in verification codes table: %w", err)
+	}
+	if len(counts) != 1 {
+		return fmt.Errorf("could not count email and fingerprint pairs in db (verification codes table). len(count)=%d", len(counts))
+	}
+
+	count = counts[0]
+	if count > 0 {
+		return fmt.Errorf("Verification mail has already been sent. It will expire within 1hr")
+	}
+
+	///////////////////////////
 	// Generate verification code
 	verificationCode := generateVerificationCode() // You'll need to implement this
 
@@ -169,24 +193,382 @@ func handleConfirm(db *sql.DB, fingerprint string, code string) (error, string) 
 		Exec(tx)
 
 	if err != nil {
-		return err, ""
+		return fmt.Errorf("failed to register: %w", err), ""
 	}
 
 	// Commit the transaction
 	err = tx.Commit()
 	if err != nil {
-		return err, ""
+		return fmt.Errorf("failed to commit transaction: %w", err), ""
 	}
 
 	return nil, email
 }
 
-func handleAdd(s ssh.Session, fieldValue string) {
-	io.WriteString(s, fmt.Sprintf("Adding field:value pair: %s\n", fieldValue))
-	// TODO: Implement add field logic
+func handleAllow(db *sql.DB, email, fingerprint string) error {
+	// Start transaction
+	tx, err := db.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback() // Rollback if we don't commit
+
+	// Get the email of the user with the given fingerprint
+	var granterEmails []string
+	err = SELECT(table.SSHKeys.Email).
+		FROM(table.SSHKeys).
+		WHERE(table.SSHKeys.Fingerprint.EQ(String(fingerprint))).
+		Query(tx, &granterEmails)
+
+	if err != nil {
+		return fmt.Errorf("failed to query fingerprint owner: %w", err)
+	}
+	if len(granterEmails) == 0 {
+		return fmt.Errorf("no user found with fingerprint: %s", fingerprint)
+	}
+	if len(granterEmails) > 1 {
+		return fmt.Errorf("multiple users found with same fingerprint: %s", fingerprint)
+	}
+	granterEmail := granterEmails[0]
+
+	// Check if the grantee exists (has any SSH keys)
+	var granteeCount []int64
+	err = SELECT(COUNT(table.SSHKeys.Email)).
+		FROM(table.SSHKeys).
+		WHERE(table.SSHKeys.Email.EQ(String(email))).
+		Query(tx, &granteeCount)
+
+	if err != nil {
+		return fmt.Errorf("failed to query grantee existence: %w", err)
+	}
+	if len(granteeCount) != 1 {
+		return fmt.Errorf("failed to count grantee records")
+	}
+	if granteeCount[0] == 0 {
+		return fmt.Errorf("no user found with email: %s", email)
+	}
+
+	// Check if permission already exists
+	var permissionCount []int64
+	err = SELECT(COUNT(table.EmailPermissions.GranterEmail)).
+		FROM(table.EmailPermissions).
+		WHERE(
+			AND(
+				table.EmailPermissions.GranterEmail.EQ(String(granterEmail)),
+				table.EmailPermissions.GranteeEmail.EQ(String(email)),
+			),
+		).
+		Query(tx, &permissionCount)
+
+	if err != nil {
+		return fmt.Errorf("failed to query existing permissions: %w", err)
+	}
+	if len(permissionCount) != 1 {
+		return fmt.Errorf("failed to count existing permissions")
+	}
+	if permissionCount[0] > 0 {
+		return nil // Permission already exists, return without error
+	}
+
+	// Insert new permission
+	_, err = table.EmailPermissions.INSERT(
+		table.EmailPermissions.GranterEmail,
+		table.EmailPermissions.GranteeEmail,
+	).VALUES(
+		granterEmail,
+		email,
+	).Exec(tx)
+
+	if err != nil {
+		return fmt.Errorf("failed to insert permission: %w", err)
+	}
+
+	// Commit transaction
+	if err = tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return nil
 }
 
-func handleGet(s ssh.Session, field string, keyData string) {
-	io.WriteString(s, fmt.Sprintf("Getting %s from key %s\n", field, keyData))
-	// TODO: Implement get field logic
+func handleDeny(db *sql.DB, email, fingerprint string) error {
+	// Start transaction
+	tx, err := db.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback() // Rollback if we don't commit
+
+	// Get the email of the user with the given fingerprint
+	var granterEmails []string
+	err = SELECT(table.SSHKeys.Email).
+		FROM(table.SSHKeys).
+		WHERE(table.SSHKeys.Fingerprint.EQ(String(fingerprint))).
+		Query(tx, &granterEmails)
+
+	if err != nil {
+		return fmt.Errorf("failed to query fingerprint owner: %w", err)
+	}
+	if len(granterEmails) == 0 {
+		return fmt.Errorf("no user found with fingerprint: %s", fingerprint)
+	}
+	if len(granterEmails) > 1 {
+		return fmt.Errorf("multiple users found with same fingerprint: %s", fingerprint)
+	}
+	granterEmail := granterEmails[0]
+
+	// Delete the permission
+	result, err := table.EmailPermissions.DELETE().
+		WHERE(
+			AND(
+				table.EmailPermissions.GranterEmail.EQ(String(granterEmail)),
+				table.EmailPermissions.GranteeEmail.EQ(String(email)),
+			),
+		).
+		Exec(tx)
+
+	if err != nil {
+		return fmt.Errorf("failed to delete permission: %w", err)
+	}
+
+	// Check if any rows were affected
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+	if rowsAffected == 0 {
+		return fmt.Errorf("no permission found for email: %s", email)
+	}
+
+	// Commit transaction
+	if err = tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return nil
+}
+
+func handleWhoami(db *sql.DB, fingerprint string) (string, error) {
+	// Start transaction
+	tx, err := db.Begin()
+	if err != nil {
+		return "", fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback() // Rollback if we don't commit
+
+	// Get user's email and registration time
+	type UserInfo struct {
+		Email     string
+		CreatedAt int32
+	}
+	var userInfos []UserInfo
+	err = SELECT(
+		table.SSHKeys.Email.AS("user_info.email"),
+		table.SSHKeys.CreatedAt.AS("user_info.created_at"),
+	).FROM(
+		table.SSHKeys,
+	).WHERE(
+		table.SSHKeys.Fingerprint.EQ(String(fingerprint)),
+	).Query(tx, &userInfos)
+
+	if err != nil {
+		return "", fmt.Errorf("failed to query user info: %w", err)
+	}
+	if len(userInfos) == 0 {
+		return fmt.Sprintf("You are not registered. Your fingerprint is %s", fingerprint), nil
+	}
+	if len(userInfos) > 1 {
+		return "", fmt.Errorf("multiple emails found for fingerprint: %s", fingerprint)
+	}
+	userInfo := userInfos[0]
+
+	// Get allowed users and their grant times
+	var allowedUsers []UserInfo
+	err = SELECT(
+		table.EmailPermissions.GranteeEmail.AS("user_info.email"),
+		table.EmailPermissions.CreatedAt.AS("user_info.created_at"),
+	).FROM(
+		table.EmailPermissions,
+	).WHERE(
+		table.EmailPermissions.GranterEmail.EQ(String(userInfo.Email)),
+	).ORDER_BY(
+		table.EmailPermissions.CreatedAt.ASC(),
+	).Query(tx, &allowedUsers)
+
+	if err != nil {
+		return "", fmt.Errorf("failed to query allowed users: %w", err)
+	}
+
+	// Commit transaction
+	if err = tx.Commit(); err != nil {
+		return "", fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	// Format the output
+	var result strings.Builder
+
+	// Format user info
+	userCreatedTime := time.Unix(int64(userInfo.CreatedAt), 0)
+	result.WriteString(fmt.Sprintf("Fingerprint: %s\n", fingerprint))
+	result.WriteString(fmt.Sprintf("Email: %s\n", userInfo.Email))
+	result.WriteString(fmt.Sprintf("Registered: %s\n", userCreatedTime.Format(time.RFC3339)))
+
+	// Format allowed users
+	if len(allowedUsers) == 0 {
+		result.WriteString("\nNo users are allowed to see your email.")
+	} else {
+		result.WriteString("\nAllowed users:\n")
+		for _, user := range allowedUsers {
+			grantTime := time.Unix(int64(user.CreatedAt), 0)
+			result.WriteString(fmt.Sprintf("- %s (granted: %s)\n",
+				user.Email,
+				grantTime.Format(time.RFC3339)))
+		}
+	}
+
+	return result.String(), nil
+}
+
+func handleGetEmail(db *sql.DB, callerFingerprint, targetFingerprint string) (string, error) {
+	// Start transaction
+	tx, err := db.Begin()
+	if err != nil {
+		return "", fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback() // Rollback if we don't commit
+
+	// First get the caller's email
+	var callerEmails []string
+	err = SELECT(table.SSHKeys.Email).
+		FROM(table.SSHKeys).
+		WHERE(table.SSHKeys.Fingerprint.EQ(String(callerFingerprint))).
+		Query(tx, &callerEmails)
+
+	if err != nil {
+		return "", fmt.Errorf("failed to query caller info: %w", err)
+	}
+	if len(callerEmails) == 0 {
+		return "", fmt.Errorf("caller not registered")
+	}
+	if len(callerEmails) > 1 {
+		return "", fmt.Errorf("multiple emails found for caller fingerprint")
+	}
+	callerEmail := callerEmails[0]
+
+	// Get target's email and check permissions
+	type TargetInfo struct {
+		Email string
+	}
+	var targetInfo []TargetInfo
+	err = SELECT(
+		table.SSHKeys.Email.AS("target_info.email"),
+	).FROM(
+		table.SSHKeys.
+			LEFT_JOIN(table.EmailPermissions, AND(
+				table.EmailPermissions.GranterEmail.EQ(table.SSHKeys.Email),
+				table.EmailPermissions.GranteeEmail.EQ(String(callerEmail)),
+			)),
+	).WHERE(
+		AND(
+			table.SSHKeys.Fingerprint.EQ(String(targetFingerprint)),
+			OR(
+				// Either the caller is looking up their own email
+				table.SSHKeys.Email.EQ(String(callerEmail)),
+				// Or they have permission
+				table.EmailPermissions.GranteeEmail.IS_NOT_NULL(),
+			),
+		),
+	).Query(tx, &targetInfo)
+
+	if err != nil {
+		return "", fmt.Errorf("failed to query target info: %w", err)
+	}
+	if len(targetInfo) == 0 {
+		return "", fmt.Errorf("no email found or permission denied")
+	}
+	if len(targetInfo) > 1 {
+		return "", fmt.Errorf("multiple emails found for target fingerprint")
+	}
+
+	// Commit transaction
+	if err = tx.Commit(); err != nil {
+		return "", fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return targetInfo[0].Email, nil
+}
+
+func handleUnregister(db *sql.DB, fingerprint string) error {
+	// Start transaction
+	tx, err := db.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback() // Rollback if we don't commit
+
+	// First get the user's email as we'll need it for cleaning up permissions
+	var emails []string
+	err = SELECT(table.SSHKeys.Email).
+		FROM(table.SSHKeys).
+		WHERE(table.SSHKeys.Fingerprint.EQ(String(fingerprint))).
+		Query(tx, &emails)
+
+	if err != nil {
+		return fmt.Errorf("failed to query user email: %w", err)
+	}
+	if len(emails) == 0 {
+		return fmt.Errorf("no registration found for this fingerprint")
+	}
+	if len(emails) > 1 {
+		return fmt.Errorf("multiple registrations found for this fingerprint")
+	}
+	email := emails[0]
+
+	// Delete all permissions where this user is the granter
+	_, err = table.EmailPermissions.DELETE().
+		WHERE(table.EmailPermissions.GranterEmail.EQ(String(email))).
+		Exec(tx)
+	if err != nil {
+		return fmt.Errorf("failed to delete granted permissions: %w", err)
+	}
+
+	// Delete all permissions where this user is the grantee
+	_, err = table.EmailPermissions.DELETE().
+		WHERE(table.EmailPermissions.GranteeEmail.EQ(String(email))).
+		Exec(tx)
+	if err != nil {
+		return fmt.Errorf("failed to delete received permissions: %w", err)
+	}
+
+	// Delete any pending verification codes
+	_, err = table.VerificationCodes.DELETE().
+		WHERE(table.VerificationCodes.Fingerprint.EQ(String(fingerprint))).
+		Exec(tx)
+	if err != nil {
+		return fmt.Errorf("failed to delete verification codes: %w", err)
+	}
+
+	// Finally, delete the SSH key registration
+	result, err := table.SSHKeys.DELETE().
+		WHERE(table.SSHKeys.Fingerprint.EQ(String(fingerprint))).
+		Exec(tx)
+	if err != nil {
+		return fmt.Errorf("failed to delete registration: %w", err)
+	}
+
+	// Verify that we actually deleted a registration
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+	if rowsAffected == 0 {
+		return fmt.Errorf("no registration found for this fingerprint")
+	}
+
+	// Commit transaction
+	if err = tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return nil
 }

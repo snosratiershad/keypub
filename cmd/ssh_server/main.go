@@ -20,9 +20,9 @@ import (
 
 const (
 	hostKeyPath          = "/home/ubuntu/.keys/.host"
-	port                 = 2223
+	port                 = 22
 	rl_limit             = 600
-	rl_duration          = 3 * time.Hour
+	rl_duration          = 10 * time.Hour
 	rl_strict            = false
 	db_fname             = "/home/ubuntu/data/keysdb.sqlite3"
 	resendKeyPath        = "/home/ubuntu/.keys/.resend"
@@ -75,7 +75,8 @@ func main() {
 			return
 		}
 
-		switch args[0] {
+		comm := args[0]
+		switch comm {
 		case "register":
 			if len(args) != 2 {
 				io.WriteString(s, "Usage: register <email>\n")
@@ -105,18 +106,113 @@ func main() {
 			} else {
 				io.WriteString(s, fmt.Sprintf("Success: Mail %s is now associated with fingerprint %s\n", mail, fingerprint))
 			}
-		case "add":
+		case "allow":
 			if len(args) != 2 {
-				io.WriteString(s, "Usage: add <field:value>\n")
+				io.WriteString(s, "Usage: allow <email>\n")
 				return
 			}
-			handleAdd(s, args[1])
+
+			email := args[1]
+			err := mail.ValidateEmail(email)
+			if err != nil {
+				io.WriteString(s, "Error: Mail address fails validation\n")
+				return
+			}
+			err = handleAllow(db, email, fingerprint)
+			if err != nil {
+				io.WriteString(s, fmt.Sprintf("Error: %s\n", err))
+			} else {
+				io.WriteString(s, fmt.Sprintf("Success: user %s can read your email address\n", email))
+			}
+		case "deny":
+			if len(args) != 2 {
+				io.WriteString(s, "Usage: deny <email>\n")
+				return
+			}
+
+			email := args[1]
+			err := mail.ValidateEmail(email)
+			if err != nil {
+				io.WriteString(s, "Error: Mail address fails validation\n")
+				return
+			}
+			err = handleDeny(db, email, fingerprint)
+			if err != nil {
+				io.WriteString(s, fmt.Sprintf("Error: %s\n", err))
+			} else {
+				io.WriteString(s, fmt.Sprintf("Success: user %s can no longer read your email address\n", email))
+			}
+		case "whoami":
+			if len(args) != 1 {
+				io.WriteString(s, "Usage: whoami\n")
+				return
+			}
+			info, err := handleWhoami(db, fingerprint)
+			if err != nil {
+				io.WriteString(s, fmt.Sprintf("Error: %s\n", err))
+			} else {
+				io.WriteString(s, fmt.Sprintf("%s\n", info))
+			}
 		case "get":
-			if len(args) < 3 {
-				io.WriteString(s, "Usage: get <field> from <key>\n")
+			if len(args) != 3 || args[1] != "email" || args[2] == "" {
+				io.WriteString(s, "Usage: get email <fingerprint>\n")
 				return
 			}
-			handleGet(s, args[1], args[2])
+			targetFingerprint := args[2]
+			email, err := handleGetEmail(db, fingerprint, targetFingerprint)
+			if err != nil {
+				io.WriteString(s, fmt.Sprintf("Error: %s\n", err))
+			} else {
+				io.WriteString(s, fmt.Sprintf("%s\n", email))
+			}
+		case "unregister":
+			if len(args) != 1 {
+				io.WriteString(s, "Usage: unregister\n")
+				return
+			}
+			err := handleUnregister(db, fingerprint)
+			if err != nil {
+				io.WriteString(s, fmt.Sprintf("Error: %s\n", err))
+			} else {
+				io.WriteString(s, "Success: Your registration and all related permissions have been removed\n")
+			}
+		case "help":
+			if len(args) != 1 {
+				io.WriteString(s, "Usage: help\n")
+				return
+			}
+			io.WriteString(s, `Available commands:
+
+register <email>
+   Register your SSH key with the given email address.
+   You will receive a confirmation code via email.
+
+confirm <code> 
+   Confirm your email address using the code you received.
+   This completes your registration.
+
+allow <email>
+   Grant permission to the given email address to see your email.
+   The user must be registered in the system.
+
+deny <email>
+   Remove permission for the given email address to see your email.
+
+whoami
+   Show your fingerprint, registered email, registration date,
+   and list of users allowed to see your email.
+
+get email <fingerprint>  
+   Get the email address associated with the given fingerprint.
+   Only works if you have permission to see it.
+
+unregister
+   Remove your registration and all associated permissions.
+   This cannot be undone.
+
+help
+   Show this help message.
+`)
 		default:
 			io.WriteString(s, fmt.Sprintf("Unknown command: %s\n", args[0]))
 		}
