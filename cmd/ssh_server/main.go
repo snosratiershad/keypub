@@ -143,10 +143,6 @@ func main() {
 				io.WriteString(s, fmt.Sprintf("Success: user %s can no longer read your email address\n", email))
 			}
 		case "whoami":
-			if len(args) != 1 {
-				io.WriteString(s, "Usage: whoami\n")
-				return
-			}
 			info, err := handleWhoami(db, fingerprint)
 			if err != nil {
 				io.WriteString(s, fmt.Sprintf("Error: %s\n", err))
@@ -166,10 +162,6 @@ func main() {
 				io.WriteString(s, fmt.Sprintf("%s\n", email))
 			}
 		case "unregister":
-			if len(args) != 1 {
-				io.WriteString(s, "Usage: unregister\n")
-				return
-			}
 			err := handleUnregister(db, fingerprint)
 			if err != nil {
 				io.WriteString(s, fmt.Sprintf("Error: %s\n", err))
@@ -177,10 +169,6 @@ func main() {
 				io.WriteString(s, "Success: Your registration and all related permissions have been removed\n")
 			}
 		case "help":
-			if len(args) != 1 {
-				io.WriteString(s, "Usage: help\n")
-				return
-			}
 			io.WriteString(s, `Available commands:
 
 register <email>
@@ -213,6 +201,12 @@ unregister
 help
    Show this help message.
 `)
+		case "about":
+			io.WriteString(s, `* Verified registry linking SSH public keys to email addresses
+* No installation or configuration needed - works with your existing SSH setup
+* Privacy-focused: you control what information is public or private
+* Simple email verification process
+* Free public service`)
 		default:
 			io.WriteString(s, fmt.Sprintf("Unknown command: %s\n", args[0]))
 		}
