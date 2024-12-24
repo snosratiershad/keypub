@@ -206,7 +206,8 @@ help
 * No installation or configuration needed - works with your existing SSH setup
 * Privacy-focused: you control what information is public or private
 * Simple email verification process
-* Free public service`)
+* Free public service
+`)
 		default:
 			io.WriteString(s, fmt.Sprintf("Unknown command: %s\n", args[0]))
 		}
