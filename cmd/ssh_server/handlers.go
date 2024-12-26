@@ -356,41 +356,57 @@ func handleWhoami(db *sql.DB, fingerprint string) (string, error) {
 	}
 	defer tx.Rollback() // Rollback if we don't commit
 
-	// Get user's email and registration time
-	type UserInfo struct {
-		Email     string
-		CreatedAt int32
+	// First get the email for the current fingerprint
+	var userEmails []string
+	err = SELECT(table.SSHKeys.Email).
+		FROM(table.SSHKeys).
+		WHERE(table.SSHKeys.Fingerprint.EQ(String(fingerprint))).
+		Query(tx, &userEmails)
+
+	if err != nil {
+		return "", fmt.Errorf("failed to query user email: %w", err)
 	}
-	var userInfos []UserInfo
+	if len(userEmails) == 0 {
+		return fmt.Sprintf("You are not registered. Your fingerprint is %s", fingerprint), nil
+	}
+	if len(userEmails) > 1 {
+		return "", fmt.Errorf("multiple emails found for fingerprint: %s", fingerprint)
+	}
+	userEmail := userEmails[0]
+
+	// Get all fingerprints and their registration times for this email
+	type KeyInfo struct {
+		Fingerprint string
+		CreatedAt   int32
+	}
+	var keyInfos []KeyInfo
 	err = SELECT(
-		table.SSHKeys.Email.AS("user_info.email"),
-		table.SSHKeys.CreatedAt.AS("user_info.created_at"),
+		table.SSHKeys.Fingerprint.AS("key_info.fingerprint"),
+		table.SSHKeys.CreatedAt.AS("key_info.created_at"),
 	).FROM(
 		table.SSHKeys,
 	).WHERE(
-		table.SSHKeys.Fingerprint.EQ(String(fingerprint)),
-	).Query(tx, &userInfos)
+		table.SSHKeys.Email.EQ(String(userEmail)),
+	).ORDER_BY(
+		table.SSHKeys.CreatedAt.ASC(),
+	).Query(tx, &keyInfos)
 
 	if err != nil {
-		return "", fmt.Errorf("failed to query user info: %w", err)
+		return "", fmt.Errorf("failed to query key info: %w", err)
 	}
-	if len(userInfos) == 0 {
-		return fmt.Sprintf("You are not registered. Your fingerprint is %s", fingerprint), nil
-	}
-	if len(userInfos) > 1 {
-		return "", fmt.Errorf("multiple emails found for fingerprint: %s", fingerprint)
-	}
-	userInfo := userInfos[0]
 
 	// Get allowed users and their grant times
-	var allowedUsers []UserInfo
+	var allowedUsers []struct {
+		Email     string
+		CreatedAt int32
+	}
 	err = SELECT(
-		table.EmailPermissions.GranteeEmail.AS("user_info.email"),
-		table.EmailPermissions.CreatedAt.AS("user_info.created_at"),
+		table.EmailPermissions.GranteeEmail.AS("email"),
+		table.EmailPermissions.CreatedAt.AS("created_at"),
 	).FROM(
 		table.EmailPermissions,
 	).WHERE(
-		table.EmailPermissions.GranterEmail.EQ(String(userInfo.Email)),
+		table.EmailPermissions.GranterEmail.EQ(String(userEmail)),
 	).ORDER_BY(
 		table.EmailPermissions.CreatedAt.ASC(),
 	).Query(tx, &allowedUsers)
@@ -408,10 +424,21 @@ func handleWhoami(db *sql.DB, fingerprint string) (string, error) {
 	var result strings.Builder
 
 	// Format user info
-	userCreatedTime := time.Unix(int64(userInfo.CreatedAt), 0)
-	result.WriteString(fmt.Sprintf("Fingerprint: %s\n", fingerprint))
-	result.WriteString(fmt.Sprintf("Email: %s\n", userInfo.Email))
-	result.WriteString(fmt.Sprintf("Registered: %s\n", userCreatedTime.Format(time.RFC3339)))
+	result.WriteString(fmt.Sprintf("Email: %s\n\n", userEmail))
+	result.WriteString("Registered Keys:\n")
+
+	for _, key := range keyInfos {
+		createdTime := time.Unix(int64(key.CreatedAt), 0)
+		if key.Fingerprint == fingerprint {
+			result.WriteString(fmt.Sprintf("* %s (current) - registered: %s\n",
+				key.Fingerprint,
+				createdTime.Format(time.RFC3339)))
+		} else {
+			result.WriteString(fmt.Sprintf("  %s - registered: %s\n",
+				key.Fingerprint,
+				createdTime.Format(time.RFC3339)))
+		}
+	}
 
 	// Format allowed users
 	if len(allowedUsers) == 0 {
@@ -427,6 +454,98 @@ func handleWhoami(db *sql.DB, fingerprint string) (string, error) {
 	}
 
 	return result.String(), nil
+}
+
+func handleUnregister(db *sql.DB, fingerprint string) error {
+	// Start transaction
+	tx, err := db.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback() // Rollback if we don't commit
+
+	// First get the user's email
+	var emails []string
+	err = SELECT(table.SSHKeys.Email).
+		FROM(table.SSHKeys).
+		WHERE(table.SSHKeys.Fingerprint.EQ(String(fingerprint))).
+		Query(tx, &emails)
+
+	if err != nil {
+		return fmt.Errorf("failed to query user email: %w", err)
+	}
+	if len(emails) == 0 {
+		return fmt.Errorf("no registration found for this fingerprint")
+	}
+	if len(emails) > 1 {
+		return fmt.Errorf("multiple registrations found for this fingerprint")
+	}
+	email := emails[0]
+
+	// Count remaining keys for this email
+	var keyCount []int64
+	err = SELECT(COUNT(table.SSHKeys.Fingerprint)).
+		FROM(table.SSHKeys).
+		WHERE(table.SSHKeys.Email.EQ(String(email))).
+		Query(tx, &keyCount)
+
+	if err != nil {
+		return fmt.Errorf("failed to count remaining keys: %w", err)
+	}
+	if len(keyCount) != 1 {
+		return fmt.Errorf("failed to get key count")
+	}
+
+	// Only delete permissions if this is the last key
+	if keyCount[0] == 1 {
+		// Delete all permissions where this user is the granter
+		_, err = table.EmailPermissions.DELETE().
+			WHERE(table.EmailPermissions.GranterEmail.EQ(String(email))).
+			Exec(tx)
+		if err != nil {
+			return fmt.Errorf("failed to delete granted permissions: %w", err)
+		}
+
+		// Delete all permissions where this user is the grantee
+		_, err = table.EmailPermissions.DELETE().
+			WHERE(table.EmailPermissions.GranteeEmail.EQ(String(email))).
+			Exec(tx)
+		if err != nil {
+			return fmt.Errorf("failed to delete received permissions: %w", err)
+		}
+	}
+
+	// Delete any pending verification codes for this fingerprint
+	_, err = table.VerificationCodes.DELETE().
+		WHERE(table.VerificationCodes.Fingerprint.EQ(String(fingerprint))).
+		Exec(tx)
+	if err != nil {
+		return fmt.Errorf("failed to delete verification codes: %w", err)
+	}
+
+	// Delete the specific SSH key registration
+	result, err := table.SSHKeys.DELETE().
+		WHERE(table.SSHKeys.Fingerprint.EQ(String(fingerprint))).
+		Exec(tx)
+	if err != nil {
+		return fmt.Errorf("failed to delete registration: %w", err)
+	}
+
+	// Verify that we actually deleted a registration
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+	if rowsAffected == 0 {
+		return fmt.Errorf("no registration found for this fingerprint")
+	}
+
+	// Commit transaction
+	if err = tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return nil
 }
 
 func handleGetEmail(db *sql.DB, callerFingerprint, targetFingerprint string) (string, error) {
@@ -496,79 +615,4 @@ func handleGetEmail(db *sql.DB, callerFingerprint, targetFingerprint string) (st
 	}
 
 	return targetInfo[0].Email, nil
-}
-
-func handleUnregister(db *sql.DB, fingerprint string) error {
-	// Start transaction
-	tx, err := db.Begin()
-	if err != nil {
-		return fmt.Errorf("failed to begin transaction: %w", err)
-	}
-	defer tx.Rollback() // Rollback if we don't commit
-
-	// First get the user's email as we'll need it for cleaning up permissions
-	var emails []string
-	err = SELECT(table.SSHKeys.Email).
-		FROM(table.SSHKeys).
-		WHERE(table.SSHKeys.Fingerprint.EQ(String(fingerprint))).
-		Query(tx, &emails)
-
-	if err != nil {
-		return fmt.Errorf("failed to query user email: %w", err)
-	}
-	if len(emails) == 0 {
-		return fmt.Errorf("no registration found for this fingerprint")
-	}
-	if len(emails) > 1 {
-		return fmt.Errorf("multiple registrations found for this fingerprint")
-	}
-	email := emails[0]
-
-	// Delete all permissions where this user is the granter
-	_, err = table.EmailPermissions.DELETE().
-		WHERE(table.EmailPermissions.GranterEmail.EQ(String(email))).
-		Exec(tx)
-	if err != nil {
-		return fmt.Errorf("failed to delete granted permissions: %w", err)
-	}
-
-	// Delete all permissions where this user is the grantee
-	_, err = table.EmailPermissions.DELETE().
-		WHERE(table.EmailPermissions.GranteeEmail.EQ(String(email))).
-		Exec(tx)
-	if err != nil {
-		return fmt.Errorf("failed to delete received permissions: %w", err)
-	}
-
-	// Delete any pending verification codes
-	_, err = table.VerificationCodes.DELETE().
-		WHERE(table.VerificationCodes.Fingerprint.EQ(String(fingerprint))).
-		Exec(tx)
-	if err != nil {
-		return fmt.Errorf("failed to delete verification codes: %w", err)
-	}
-
-	// Finally, delete the SSH key registration
-	result, err := table.SSHKeys.DELETE().
-		WHERE(table.SSHKeys.Fingerprint.EQ(String(fingerprint))).
-		Exec(tx)
-	if err != nil {
-		return fmt.Errorf("failed to delete registration: %w", err)
-	}
-
-	// Verify that we actually deleted a registration
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("failed to get rows affected: %w", err)
-	}
-	if rowsAffected == 0 {
-		return fmt.Errorf("no registration found for this fingerprint")
-	}
-
-	// Commit transaction
-	if err = tx.Commit(); err != nil {
-		return fmt.Errorf("failed to commit transaction: %w", err)
-	}
-
-	return nil
 }
