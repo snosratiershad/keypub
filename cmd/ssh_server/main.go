@@ -198,8 +198,23 @@ unregister
    Remove your registration and all associated permissions.
    This cannot be undone.
 
+about
+   Learn about this service and how it helps map SSH keys 
+   to email addresses while protecting user privacy.
+
+why
+   Understand the motivation behind this project and how it 
+   helps solve common SSH key management challenges.
+
 help
    Show this help message.
+`)
+		case "why":
+			io.WriteString(s, `* Single verified identity for all SSH-based applications - register once, use everywhere
+* Perfect for SSH application developers - no need to build and maintain user verification systems
+* Users control their privacy - they decide which applications can access their email
+* Lightweight alternative to OAuth for CLI applications - just use SSH keys that users already have
+* Central identity system that respects privacy and puts users in control
 `)
 		case "about":
 			io.WriteString(s, `* Verified registry linking SSH public keys to email addresses

@@ -1,0 +1,1 @@
+go build -o ssh_server.nogit. ./cmd/ssh_server
