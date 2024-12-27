@@ -2,13 +2,10 @@ package db
 
 import (
 	"database/sql"
+	. "github.com/go-jet/jet/v2/sqlite"
 	"keypub/internal/db/.gen/table"
 	"log"
 	"time"
-
-	. "github.com/go-jet/jet/v2/sqlite"
-
-	_ "github.com/mattn/go-sqlite3"
 )
 
 type VerificationCleaner struct {

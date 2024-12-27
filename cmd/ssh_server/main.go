@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/gliderlabs/ssh"
@@ -12,7 +14,6 @@ import (
 	"keypub/internal/mail"
 	rl "keypub/internal/ratelimit"
 
-	"database/sql"
 	_ "github.com/mattn/go-sqlite3"
 
 	db_utils "keypub/internal/db"
@@ -29,6 +30,15 @@ const (
 	confirmationFromMail = "confirmations@keypub.sh"
 	confirmationFromName = "keypub.sh"
 	verificationDuration = 1 * time.Hour
+	s3SecretPath         = "/home/ubuntu/.keys/.s3secret"
+	s3AccessPath         = "/home/ubuntu/.keys/.s3access"
+	s3Region             = "eu-central"
+	s3EndPointPath       = "/home/ubuntu/.keys/.s3endpoint"
+	backupBucketName     = "keypub-db-backup"
+	backupDelta          = 5 * time.Hour
+	retentionDays        = 30
+	tmpDir               = "/tmp"
+	backupLabel          = "keypub_db_backup"
 )
 
 func main() {
@@ -48,7 +58,7 @@ func main() {
 		},
 	}
 
-	db, err := sql.Open("sqlite3", "/home/ubuntu/data/keysdb.sqlite3")
+	db, err := db_utils.NewDB(db_fname)
 	if err != nil {
 		log.Fatalf("Cannot open db file: %s", err)
 	}
@@ -61,6 +71,47 @@ func main() {
 	if err != nil {
 		log.Fatalf("Could not initialize MailSender: %s", err)
 	}
+
+	content, err := os.ReadFile(s3AccessPath)
+	if err != nil {
+		log.Fatalf("cannot load s3 acces key file: %s", err)
+	}
+	s3accessKey := strings.TrimSpace(string(content))
+	s3accessKey = strings.ReplaceAll(s3accessKey, "\n", " ")
+	s3accessKey = strings.ReplaceAll(s3accessKey, "\r", "")
+	content, err = os.ReadFile(s3SecretPath)
+	if err != nil {
+		log.Fatalf("cannot load s3 secret file: %s", err)
+	}
+	s3secret := strings.TrimSpace(string(content))
+	s3secret = strings.ReplaceAll(s3secret, "\n", " ")
+	s3secret = strings.ReplaceAll(s3secret, "\r", "")
+	content, err = os.ReadFile(s3EndPointPath)
+	if err != nil {
+		log.Fatalf("cannot load s3 endpoint config file: %s", err)
+	}
+	s3endPoint := strings.TrimSpace(string(content))
+	s3endPoint = strings.ReplaceAll(s3endPoint, "\n", " ")
+	s3endPoint = strings.ReplaceAll(s3endPoint, "\r", "")
+	bm, err := db_utils.NewBackupManager(db_utils.BackupConfig{
+		DB: db,
+		S3Creds: db_utils.S3Credentials{
+			Region:          s3Region,
+			AccessKeyID:     s3accessKey,
+			SecretAccessKey: s3secret,
+			Endpoint:        s3endPoint,
+		},
+		BucketName:    backupBucketName,
+		BackupDelta:   backupDelta,
+		RetentionDays: retentionDays,
+		TempDir:       tmpDir,
+		BackupLabel:   backupLabel,
+	})
+	if err != nil {
+		log.Fatalf("could not create the backup manager: %s", err)
+	}
+	bm.Start()
+	defer bm.Stop()
 
 	server.Handle(func(s ssh.Session) {
 		fingerprint := gossh.FingerprintSHA256(s.PublicKey())
