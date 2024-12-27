@@ -48,7 +48,7 @@ func main() {
 		},
 	}
 
-	db, err := sql.Open("sqlite3", "/home/ubuntu/data/keysdb.sqlite3")
+	db, err := sql.Open("sqlite3", db_fname)
 	if err != nil {
 		log.Fatalf("Cannot open db file: %s", err)
 	}

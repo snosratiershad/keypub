@@ -14,6 +14,7 @@ import (
 )
 
 func generateVerificationCode() string {
+	// TODO: this is not really uniform random
 	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 	const length = 6
 
@@ -32,6 +33,7 @@ func generateVerificationCode() string {
 }
 
 func handleRegister(db *sql.DB, mail_sender *mail.MailSender, to_email string, fingerprint string) error {
+	// TODO: allow more than 1 mail per fingerprint
 	// Start transaction
 	tx, err := db.Begin()
 	if err != nil {
@@ -93,28 +95,16 @@ func handleRegister(db *sql.DB, mail_sender *mail.MailSender, to_email string, f
 	// Generate verification code
 	verificationCode := generateVerificationCode() // You'll need to implement this
 
-	now := time.Now()
 	// Insert verification code
 	insertStmt := table.VerificationCodes.INSERT(
 		table.VerificationCodes.Email,
 		table.VerificationCodes.Fingerprint,
 		table.VerificationCodes.Code,
-		table.VerificationCodes.CreatedAt,
 	).VALUES(
 		to_email,
 		fingerprint,
 		verificationCode,
-		now,
-	).ON_CONFLICT(
-		table.VerificationCodes.Email,
-		table.VerificationCodes.Fingerprint,
-	).DO_UPDATE(
-		SET(
-			table.VerificationCodes.Code.SET(String(verificationCode)),
-			table.VerificationCodes.CreatedAt.SET(Int64(now.Unix())),
-		),
 	)
-
 	_, err = insertStmt.Exec(tx)
 	if err != nil {
 		return fmt.Errorf("failed to insert verification code: %w", err)
@@ -134,6 +124,7 @@ func handleRegister(db *sql.DB, mail_sender *mail.MailSender, to_email string, f
 }
 
 func handleConfirm(db *sql.DB, fingerprint string, code string) (error, string) {
+	// TODO: allow for multiple mails per fingerprint
 	// Start transaction
 	tx, err := db.Begin()
 	if err != nil {
@@ -206,6 +197,8 @@ func handleConfirm(db *sql.DB, fingerprint string, code string) (error, string) 
 }
 
 func handleAllow(db *sql.DB, email, fingerprint string) error {
+	// TODO: early exit for self allow
+	// TODO: handle cases with more than 1 mail per fingerprint
 	// Start transaction
 	tx, err := db.Begin()
 	if err != nil {
@@ -292,6 +285,7 @@ func handleAllow(db *sql.DB, email, fingerprint string) error {
 }
 
 func handleDeny(db *sql.DB, email, fingerprint string) error {
+	// TODO: handle cases with more than 1 mail per fingerprint
 	// Start transaction
 	tx, err := db.Begin()
 	if err != nil {
@@ -349,6 +343,7 @@ func handleDeny(db *sql.DB, email, fingerprint string) error {
 }
 
 func handleWhoami(db *sql.DB, fingerprint string) (string, error) {
+	// TODO: handle cases with more than 1 mail per fingerprint
 	// Start transaction
 	tx, err := db.Begin()
 	if err != nil {
@@ -457,6 +452,7 @@ func handleWhoami(db *sql.DB, fingerprint string) (string, error) {
 }
 
 func handleUnregister(db *sql.DB, fingerprint string) error {
+	// TODO: handle cases with more than 1 mail per fingerprint
 	// Start transaction
 	tx, err := db.Begin()
 	if err != nil {
@@ -549,6 +545,7 @@ func handleUnregister(db *sql.DB, fingerprint string) error {
 }
 
 func handleGetEmail(db *sql.DB, callerFingerprint, targetFingerprint string) (string, error) {
+	// TODO: handle cases with more than 1 mail per fingerprint
 	// Start transaction
 	tx, err := db.Begin()
 	if err != nil {
