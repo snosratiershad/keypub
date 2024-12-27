@@ -12,7 +12,6 @@ import (
 	"keypub/internal/mail"
 	rl "keypub/internal/ratelimit"
 
-	"database/sql"
 	_ "github.com/mattn/go-sqlite3"
 
 	db_utils "keypub/internal/db"
@@ -48,7 +47,7 @@ func main() {
 		},
 	}
 
-	db, err := sql.Open("sqlite3", db_fname)
+	db, err := db_utils.NewDB(db_fname)
 	if err != nil {
 		log.Fatalf("Cannot open db file: %s", err)
 	}
