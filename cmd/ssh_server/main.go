@@ -1,11 +1,13 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"io"
 	"log"
 	"os"
+	"time"
 
 	"github.com/gliderlabs/ssh"
 	gossh "golang.org/x/crypto/ssh"
@@ -183,6 +185,74 @@ func main() {
 			} else {
 				io.WriteString(s, "Success: Your registration and all related permissions have been removed\n")
 			}
+		case "admin":
+			if len(args) < 2 {
+				io.WriteString(s, "Usage: admin [add|remove|list] [fingerprint]\n")
+				return
+			}
+
+			switch args[1] {
+			case "add":
+				if len(args) != 3 {
+					io.WriteString(s, "Usage: admin add <fingerprint>\n")
+					return
+				}
+				err := AddAdmin(db, fingerprint, args[2])
+				if err != nil {
+					io.WriteString(s, fmt.Sprintf("Error: %s\n", err))
+				} else {
+					io.WriteString(s, "Success: Admin added\n")
+				}
+
+			case "remove":
+				if len(args) != 3 {
+					io.WriteString(s, "Usage: admin remove <fingerprint>\n")
+					return
+				}
+				err := RemoveAdmin(db, fingerprint, args[2])
+				if err != nil {
+					io.WriteString(s, fmt.Sprintf("Error: %s\n", err))
+				} else {
+					io.WriteString(s, "Success: Admin removed\n")
+				}
+
+			case "list":
+				admins, err := ListAdmins(db, fingerprint)
+				if err != nil {
+					io.WriteString(s, fmt.Sprintf("Error: %s\n", err))
+				} else {
+					io.WriteString(s, "Admin fingerprints:\n")
+					for _, admin := range admins {
+						createdTime := time.Unix(int64(admin.CreatedAt), 0)
+						io.WriteString(s, fmt.Sprintf("- %s (added: %s)\n",
+							admin.Fingerprint,
+							createdTime.Format(time.RFC3339)))
+					}
+				}
+
+			default:
+				io.WriteString(s, "Unknown admin command. Available: add, remove, list\n")
+			}
+
+		case "shutdown":
+			isAdmin, err := IsAdmin(db, fingerprint)
+			if err != nil {
+				io.WriteString(s, fmt.Sprintf("Error: %s\n", err))
+				return
+			}
+			if !isAdmin {
+				io.WriteString(s, "Error: Unauthorized\n")
+				return
+			}
+
+			io.WriteString(s, "Initiating graceful shutdown...\n")
+			go func() {
+				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+				defer cancel()
+				if err := server.Shutdown(ctx); err != nil {
+					log.Printf("Error during shutdown: %v", err)
+				}
+			}()
 		case "help":
 			io.WriteString(s, `Available commands:
 
