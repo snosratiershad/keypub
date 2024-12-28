@@ -1,17 +1,16 @@
 package main
 
 import (
-	"context"
 	"database/sql"
 	"fmt"
 	"io"
 	"log"
 	"os"
-	"time"
 
 	"github.com/gliderlabs/ssh"
 	gossh "golang.org/x/crypto/ssh"
 
+	cmd "keypub/internal/command"
 	"keypub/internal/config"
 	"keypub/internal/mail"
 	rl "keypub/internal/ratelimit"
@@ -78,238 +77,39 @@ func main() {
 		defer bm.Stop()
 	}
 
-	// start main ssh server
+	// Initialize command registry
+	cmdRegistry := cmd.NewCommandRegistry()
+	registerCommandInfo(cmdRegistry)
+	registerCommandAccount(cmdRegistry)
+	registerCommandRegistration(cmdRegistry)
+	registerCommandAdmin(cmdRegistry)
+	registerCommandLookup(cmdRegistry)
+
+	// Handle SSH sessions
 	server.Handle(func(s ssh.Session) {
 		fingerprint := gossh.FingerprintSHA256(s.PublicKey())
+
+		// Rate limiting check
 		rl_res := ratelimit.Check(fingerprint)
 		if !rl_res.Allowed {
 			io.WriteString(s, "Error: Rate-limited\n")
 			return
 		}
-		args := s.Command()
-		if len(args) < 1 {
-			io.WriteString(s, "Error: Command required\n")
-			return
+
+		// Create command context
+		ctx := &cmd.CommandContext{
+			DB:          db,
+			Args:        s.Command(),
+			Fingerprint: fingerprint,
+			MailSender:  mail_sender,
+			Server:      &server,
 		}
 
-		comm := args[0]
-		switch comm {
-		case "register":
-			if len(args) != 2 {
-				io.WriteString(s, "Usage: register <email>\n")
-				return
-			}
-			email := args[1]
-			err := mail.ValidateEmail(email)
-			if err != nil {
-				io.WriteString(s, "Error: Mail address fails validation\n")
-				return
-			}
-			err = handleRegister(db, mail_sender, email, fingerprint)
-			if err != nil {
-				io.WriteString(s, fmt.Sprintf("Error: %s\n", err))
-			} else {
-				io.WriteString(s, "Success: Confirmation mail sent, valid for 1hr\n")
-			}
-		case "confirm":
-			if len(args) != 2 {
-				io.WriteString(s, "Usage: confirm <code>\n")
-				return
-			}
-			code := args[1]
-			err, mail := handleConfirm(db, fingerprint, code)
-			if err != nil {
-				io.WriteString(s, fmt.Sprintf("Error: %s\n", err))
-			} else {
-				io.WriteString(s, fmt.Sprintf("Success: Mail %s is now associated with fingerprint %s\n", mail, fingerprint))
-			}
-		case "allow":
-			if len(args) != 2 {
-				io.WriteString(s, "Usage: allow <email>\n")
-				return
-			}
-
-			email := args[1]
-			err := mail.ValidateEmail(email)
-			if err != nil {
-				io.WriteString(s, "Error: Mail address fails validation\n")
-				return
-			}
-			err = handleAllow(db, email, fingerprint)
-			if err != nil {
-				io.WriteString(s, fmt.Sprintf("Error: %s\n", err))
-			} else {
-				io.WriteString(s, fmt.Sprintf("Success: user %s can read your email address\n", email))
-			}
-		case "deny":
-			if len(args) != 2 {
-				io.WriteString(s, "Usage: deny <email>\n")
-				return
-			}
-
-			email := args[1]
-			err := mail.ValidateEmail(email)
-			if err != nil {
-				io.WriteString(s, "Error: Mail address fails validation\n")
-				return
-			}
-			err = handleDeny(db, email, fingerprint)
-			if err != nil {
-				io.WriteString(s, fmt.Sprintf("Error: %s\n", err))
-			} else {
-				io.WriteString(s, fmt.Sprintf("Success: user %s can no longer read your email address\n", email))
-			}
-		case "whoami":
-			info, err := handleWhoami(db, fingerprint)
-			if err != nil {
-				io.WriteString(s, fmt.Sprintf("Error: %s\n", err))
-			} else {
-				io.WriteString(s, fmt.Sprintf("%s\n", info))
-			}
-		case "get":
-			if len(args) != 3 || args[1] != "email" || args[2] == "" {
-				io.WriteString(s, "Usage: get email <fingerprint>\n")
-				return
-			}
-			targetFingerprint := args[2]
-			email, err := handleGetEmail(db, fingerprint, targetFingerprint)
-			if err != nil {
-				io.WriteString(s, fmt.Sprintf("Error: %s\n", err))
-			} else {
-				io.WriteString(s, fmt.Sprintf("%s\n", email))
-			}
-		case "unregister":
-			err := handleUnregister(db, fingerprint)
-			if err != nil {
-				io.WriteString(s, fmt.Sprintf("Error: %s\n", err))
-			} else {
-				io.WriteString(s, "Success: Your registration and all related permissions have been removed\n")
-			}
-		case "admin":
-			if len(args) < 2 {
-				io.WriteString(s, "Usage: admin [add|remove|list] [fingerprint]\n")
-				return
-			}
-
-			switch args[1] {
-			case "add":
-				if len(args) != 3 {
-					io.WriteString(s, "Usage: admin add <fingerprint>\n")
-					return
-				}
-				err := AddAdmin(db, fingerprint, args[2])
-				if err != nil {
-					io.WriteString(s, fmt.Sprintf("Error: %s\n", err))
-				} else {
-					io.WriteString(s, "Success: Admin added\n")
-				}
-
-			case "remove":
-				if len(args) != 3 {
-					io.WriteString(s, "Usage: admin remove <fingerprint>\n")
-					return
-				}
-				err := RemoveAdmin(db, fingerprint, args[2])
-				if err != nil {
-					io.WriteString(s, fmt.Sprintf("Error: %s\n", err))
-				} else {
-					io.WriteString(s, "Success: Admin removed\n")
-				}
-
-			case "list":
-				admins, err := ListAdmins(db, fingerprint)
-				if err != nil {
-					io.WriteString(s, fmt.Sprintf("Error: %s\n", err))
-				} else {
-					io.WriteString(s, "Admin fingerprints:\n")
-					for _, admin := range admins {
-						createdTime := time.Unix(int64(admin.CreatedAt), 0)
-						io.WriteString(s, fmt.Sprintf("- %s (added: %s)\n",
-							admin.Fingerprint,
-							createdTime.Format(time.RFC3339)))
-					}
-				}
-
-			default:
-				io.WriteString(s, "Unknown admin command. Available: add, remove, list\n")
-			}
-
-		case "shutdown":
-			isAdmin, err := IsAdmin(db, fingerprint)
-			if err != nil {
-				io.WriteString(s, fmt.Sprintf("Error: %s\n", err))
-				return
-			}
-			if !isAdmin {
-				io.WriteString(s, "Error: Unauthorized\n")
-				return
-			}
-
-			io.WriteString(s, "Initiating graceful shutdown...\n")
-			go func() {
-				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-				defer cancel()
-				if err := server.Shutdown(ctx); err != nil {
-					log.Printf("Error during shutdown: %v", err)
-				}
-			}()
-		case "help":
-			io.WriteString(s, `Available commands:
-
-register <email>
-   Register your SSH key with the given email address.
-   You will receive a confirmation code via email.
-
-confirm <code> 
-   Confirm your email address using the code you received.
-   This completes your registration.
-
-allow <email>
-   Grant permission to the given email address to see your email.
-   The user must be registered in the system.
-
-deny <email>
-   Remove permission for the given email address to see your email.
-
-whoami
-   Show your fingerprint, registered email, registration date,
-   and list of users allowed to see your email.
-
-get email <fingerprint>  
-   Get the email address associated with the given fingerprint.
-   Only works if you have permission to see it.
-
-unregister
-   Remove your registration and all associated permissions.
-   This cannot be undone.
-
-about
-   Learn about this service and how it helps map SSH keys 
-   to email addresses while protecting user privacy.
-
-why
-   Understand the motivation behind this project and how it 
-   helps solve common SSH key management challenges.
-
-help
-   Show this help message.
-`)
-		case "why":
-			io.WriteString(s, `* Single verified identity for all SSH-based applications - register once, use everywhere
-* Perfect for SSH application developers - no need to build and maintain user verification systems
-* Users control their privacy - they decide which applications can access their email
-* Lightweight alternative to OAuth for CLI applications - just use SSH keys that users already have
-* Central identity system that respects privacy and puts users in control
-`)
-		case "about":
-			io.WriteString(s, `* Verified registry linking SSH public keys to email addresses
-* No installation or configuration needed - works with your existing SSH setup
-* Privacy-focused: you control what information is public or private
-* Simple email verification process
-* Free public service
-`)
-		default:
-			io.WriteString(s, fmt.Sprintf("Unknown command: %s\n", args[0]))
+		// Execute command
+		if info, err := cmdRegistry.Execute(ctx); err != nil {
+			io.WriteString(s, fmt.Sprintf("Error: %s\n", err))
+		} else {
+			io.WriteString(s, fmt.Sprintf("%s\n", info))
 		}
 	})
 
