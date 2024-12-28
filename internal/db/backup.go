@@ -9,12 +9,14 @@ import (
 	"io"
 	"log"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 )
 
 // S3Credentials holds the credentials for S3 access
@@ -28,11 +30,11 @@ type S3Credentials struct {
 // BackupConfig holds all configuration needed for the backup system
 type BackupConfig struct {
 	// Required parameters
-	DB            *sql.DB
-	S3Creds       S3Credentials
-	BucketName    string
-	BackupDelta   time.Duration
-	RetentionDays int
+	DB             *sql.DB
+	S3Creds        S3Credentials
+	BucketName     string
+	BackupDelta    time.Duration
+	RetentionCount int // Number of backups to retain
 
 	// Optional parameters
 	TempDir     string // Directory for temporary files
@@ -61,8 +63,8 @@ func NewBackupManager(cfg BackupConfig) (*BackupManager, error) {
 	if cfg.BackupDelta < time.Minute {
 		return nil, fmt.Errorf("backup delta must be at least 1 minute")
 	}
-	if cfg.RetentionDays < 1 {
-		return nil, fmt.Errorf("retention days must be at least 1")
+	if cfg.RetentionCount < 1 {
+		return nil, fmt.Errorf("retention count must be at least 1")
 	}
 
 	// Set defaults for optional parameters
@@ -215,40 +217,41 @@ func (m *BackupManager) createS3Client() *s3.Client {
 }
 
 func (m *BackupManager) cleanOldBackups() error {
-	cutoff := time.Now().AddDate(0, 0, -m.cfg.RetentionDays)
-
 	// Create new S3 client for cleanup
 	client := m.createS3Client()
 
 	// List all objects in bucket
 	resp, err := client.ListObjects(context.Background(), &s3.ListObjectsInput{
 		Bucket: aws.String(m.cfg.BucketName),
+		Prefix: aws.String(m.cfg.BackupLabel + "_"), // Only list our backups
 	})
 	if err != nil {
 		return err
 	}
 
-	// Find old backups
+	// Filter and sort backups
+	var backups []types.Object
 	for _, obj := range resp.Contents {
-		// Parse timestamp from key
-		parts := strings.Split(*obj.Key, "_")
-		if len(parts) < 2 {
-			continue
+		// Only process files matching our backup pattern
+		if strings.HasPrefix(*obj.Key, m.cfg.BackupLabel+"_") {
+			backups = append(backups, obj)
 		}
+	}
 
-		timestamp, err := time.Parse("20060102_150405", parts[1])
-		if err != nil {
-			continue
-		}
+	// Sort backups by LastModified timestamp, newest first
+	sort.Slice(backups, func(i, j int) bool {
+		return backups[i].LastModified.After(*backups[j].LastModified)
+	})
 
-		// Delete if older than retention period
-		if timestamp.Before(cutoff) {
+	// Delete all backups beyond the retention count
+	if len(backups) > m.cfg.RetentionCount {
+		for _, backup := range backups[m.cfg.RetentionCount:] {
 			_, err := client.DeleteObject(context.Background(), &s3.DeleteObjectInput{
 				Bucket: aws.String(m.cfg.BucketName),
-				Key:    obj.Key,
+				Key:    backup.Key,
 			})
 			if err != nil {
-				log.Printf("failed to delete old backup %s: %v", *obj.Key, err)
+				log.Printf("failed to delete old backup %s: %v", *backup.Key, err)
 			}
 		}
 	}
