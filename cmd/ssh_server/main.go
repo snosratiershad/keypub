@@ -36,7 +36,7 @@ const (
 	s3EndPointPath       = "/home/ubuntu/.keys/.s3endpoint"
 	backupBucketName     = "keypub-db-backup"
 	backupDelta          = 5 * time.Hour
-	retentionDays        = 30
+	backupRetentionCount = 100
 	tmpDir               = "/tmp"
 	backupLabel          = "keypub_db_backup"
 )
@@ -101,11 +101,11 @@ func main() {
 			SecretAccessKey: s3secret,
 			Endpoint:        s3endPoint,
 		},
-		BucketName:    backupBucketName,
-		BackupDelta:   backupDelta,
-		RetentionDays: retentionDays,
-		TempDir:       tmpDir,
-		BackupLabel:   backupLabel,
+		BucketName:     backupBucketName,
+		BackupDelta:    backupDelta,
+		RetentionCount: backupRetentionCount,
+		TempDir:        tmpDir,
+		BackupLabel:    backupLabel,
 	})
 	if err != nil {
 		log.Fatalf("could not create the backup manager: %s", err)
