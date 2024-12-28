@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"strings"
 
 	"github.com/gliderlabs/ssh"
 	gossh "golang.org/x/crypto/ssh"
@@ -135,9 +136,9 @@ func initializeBackup(cfg *config.Config, db *sql.DB) (*db_utils.BackupManager, 
 		DB: db,
 		S3Creds: db_utils.S3Credentials{
 			Region:          cfg.Backup.S3Region,
-			AccessKeyID:     string(s3access),
-			SecretAccessKey: string(s3secret),
-			Endpoint:        string(s3endpoint),
+			AccessKeyID:     strings.TrimSpace(string(s3access)),
+			SecretAccessKey: strings.TrimSpace(string(s3secret)),
+			Endpoint:        strings.TrimSpace(string(s3endpoint)),
 		},
 		BucketName:     cfg.Backup.BucketName,
 		BackupDelta:    cfg.Backup.Delta,
