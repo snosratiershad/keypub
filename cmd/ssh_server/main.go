@@ -1,16 +1,16 @@
 package main
 
 import (
+	"database/sql"
 	"fmt"
 	"io"
 	"log"
 	"os"
-	"strings"
-	"time"
 
 	"github.com/gliderlabs/ssh"
 	gossh "golang.org/x/crypto/ssh"
 
+	"keypub/internal/config"
 	"keypub/internal/mail"
 	rl "keypub/internal/ratelimit"
 
@@ -19,100 +19,64 @@ import (
 	db_utils "keypub/internal/db"
 )
 
-const (
-	hostKeyPath          = "/home/ubuntu/.keys/.host"
-	port                 = 22
-	rl_limit             = 600
-	rl_duration          = 10 * time.Hour
-	rl_strict            = false
-	db_fname             = "/home/ubuntu/data/keysdb.sqlite3"
-	resendKeyPath        = "/home/ubuntu/.keys/.resend"
-	confirmationFromMail = "confirmations@keypub.sh"
-	confirmationFromName = "keypub.sh"
-	verificationDuration = 1 * time.Hour
-	s3SecretPath         = "/home/ubuntu/.keys/.s3secret"
-	s3AccessPath         = "/home/ubuntu/.keys/.s3access"
-	s3Region             = "eu-central"
-	s3EndPointPath       = "/home/ubuntu/.keys/.s3endpoint"
-	backupBucketName     = "keypub-db-backup"
-	backupDelta          = 5 * time.Hour
-	backupRetentionCount = 100
-	tmpDir               = "/tmp"
-	backupLabel          = "keypub_db_backup"
-)
-
 func main() {
-	ratelimit := rl.NewRateLimiter(rl_limit, rl_duration, rl_strict)
+	// Load configuration
+	result, err := config.LoadFromFlags()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n\n", err)
+		config.PrintUsage()
+		os.Exit(1)
+	}
+
+	cfg := result.Config
+	log.Printf("Starting server with %s", result.Source)
+
+	// initialize rate limiter
+	ratelimit := rl.NewRateLimiter(cfg.RateLimit.Limit, cfg.RateLimit.Duration, cfg.RateLimit.Strict)
 	defer ratelimit.Stop()
 
-	hostKey, err := loadHostKey(hostKeyPath)
+	// initialize server
+	hostKey, err := loadHostKey(cfg.Server.HostKey)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	server := ssh.Server{
-		Addr:        fmt.Sprintf(":%d", port),
+		Addr:        fmt.Sprintf(":%d", cfg.Server.Port),
 		HostSigners: []ssh.Signer{hostKey},
 		PublicKeyHandler: func(ctx ssh.Context, key ssh.PublicKey) bool {
 			return true
 		},
 	}
 
-	db, err := db_utils.NewDB(db_fname)
+	// open DB
+	db, err := db_utils.NewDB(cfg.Database.Path)
 	if err != nil {
 		log.Fatalf("Cannot open db file: %s", err)
 	}
 	defer db.Close()
 
-	verification_cleaner := db_utils.NewVerificationCleaner(db, verificationDuration)
+	// regular interval DB cleaner (currently only for verification codes)
+	verification_cleaner := db_utils.NewVerificationCleaner(db, cfg.Verification.Duration)
 	defer verification_cleaner.Close()
 
-	mail_sender, err := mail.NewMailSender(resendKeyPath, confirmationFromMail, confirmationFromName)
+	// initialize mail sender
+	mail_sender, err := mail.NewMailSender(cfg.Email.ResendKeyPath, cfg.Email.FromEmail, cfg.Email.FromName)
 	if err != nil {
 		log.Fatalf("Could not initialize MailSender: %s", err)
 	}
 
-	content, err := os.ReadFile(s3AccessPath)
-	if err != nil {
-		log.Fatalf("cannot load s3 acces key file: %s", err)
+	// Only initialize backup if enabled
+	if cfg.Backup.Enabled {
+		bm, err := initializeBackup(cfg, db)
+		if err != nil {
+			log.Fatalf("could not create the backup manager: %s", err)
+		}
+		bm.Start()
+		defer bm.Stop()
 	}
-	s3accessKey := strings.TrimSpace(string(content))
-	s3accessKey = strings.ReplaceAll(s3accessKey, "\n", " ")
-	s3accessKey = strings.ReplaceAll(s3accessKey, "\r", "")
-	content, err = os.ReadFile(s3SecretPath)
-	if err != nil {
-		log.Fatalf("cannot load s3 secret file: %s", err)
-	}
-	s3secret := strings.TrimSpace(string(content))
-	s3secret = strings.ReplaceAll(s3secret, "\n", " ")
-	s3secret = strings.ReplaceAll(s3secret, "\r", "")
-	content, err = os.ReadFile(s3EndPointPath)
-	if err != nil {
-		log.Fatalf("cannot load s3 endpoint config file: %s", err)
-	}
-	s3endPoint := strings.TrimSpace(string(content))
-	s3endPoint = strings.ReplaceAll(s3endPoint, "\n", " ")
-	s3endPoint = strings.ReplaceAll(s3endPoint, "\r", "")
-	bm, err := db_utils.NewBackupManager(db_utils.BackupConfig{
-		DB: db,
-		S3Creds: db_utils.S3Credentials{
-			Region:          s3Region,
-			AccessKeyID:     s3accessKey,
-			SecretAccessKey: s3secret,
-			Endpoint:        s3endPoint,
-		},
-		BucketName:     backupBucketName,
-		BackupDelta:    backupDelta,
-		RetentionCount: backupRetentionCount,
-		TempDir:        tmpDir,
-		BackupLabel:    backupLabel,
-	})
-	if err != nil {
-		log.Fatalf("could not create the backup manager: %s", err)
-	}
-	bm.Start()
-	defer bm.Stop()
 
+	// start main ssh server
 	server.Handle(func(s ssh.Session) {
 		fingerprint := gossh.FingerprintSHA256(s.PublicKey())
 		rl_res := ratelimit.Check(fingerprint)
@@ -279,6 +243,36 @@ help
 		}
 	})
 
-	log.Printf("Starting SSH server on port %d...", port)
+	log.Printf("Starting SSH server on port %d...", cfg.Server.Port)
 	log.Fatal(server.ListenAndServe())
+}
+
+func initializeBackup(cfg *config.Config, db *sql.DB) (*db_utils.BackupManager, error) {
+	s3access, err := os.ReadFile(cfg.Backup.S3AccessPath)
+	if err != nil {
+		return nil, fmt.Errorf("cannot load s3 access key: %v", err)
+	}
+	s3secret, err := os.ReadFile(cfg.Backup.S3SecretPath)
+	if err != nil {
+		return nil, fmt.Errorf("cannot load s3 secret: %v", err)
+	}
+	s3endpoint, err := os.ReadFile(cfg.Backup.S3EndpointPath)
+	if err != nil {
+		return nil, fmt.Errorf("cannot load s3 endpoint: %v", err)
+	}
+
+	return db_utils.NewBackupManager(db_utils.BackupConfig{
+		DB: db,
+		S3Creds: db_utils.S3Credentials{
+			Region:          cfg.Backup.S3Region,
+			AccessKeyID:     string(s3access),
+			SecretAccessKey: string(s3secret),
+			Endpoint:        string(s3endpoint),
+		},
+		BucketName:     cfg.Backup.BucketName,
+		BackupDelta:    cfg.Backup.Delta,
+		RetentionCount: cfg.Backup.RetentionCount,
+		TempDir:        cfg.Backup.TempDir,
+		BackupLabel:    cfg.Backup.Label,
+	})
 }
