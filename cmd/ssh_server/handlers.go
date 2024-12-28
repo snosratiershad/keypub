@@ -613,3 +613,186 @@ func handleGetEmail(db *sql.DB, callerFingerprint, targetFingerprint string) (st
 
 	return targetInfo[0].Email, nil
 }
+
+func IsAdmin(db *sql.DB, fingerprint string) (bool, error) {
+	tx, err := db.Begin()
+	if err != nil {
+		return false, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	var count []int64
+	err = SELECT(COUNT(table.AdminFingerprints.Fingerprint)).
+		FROM(table.AdminFingerprints).
+		WHERE(table.AdminFingerprints.Fingerprint.EQ(String(fingerprint))).
+		Query(tx, &count)
+
+	if err != nil {
+		return false, fmt.Errorf("failed to query admin status: %w", err)
+	}
+	if len(count) != 1 {
+		return false, fmt.Errorf("invalid count result")
+	}
+
+	if err = tx.Commit(); err != nil {
+		return false, fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return count[0] > 0, nil
+}
+
+func AddAdmin(db *sql.DB, callerFingerprint, newAdminFingerprint string) error {
+	tx, err := db.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	// Check if caller is admin
+	var count []int64
+	err = SELECT(COUNT(table.AdminFingerprints.Fingerprint)).
+		FROM(table.AdminFingerprints).
+		WHERE(table.AdminFingerprints.Fingerprint.EQ(String(callerFingerprint))).
+		Query(tx, &count)
+
+	if err != nil {
+		return fmt.Errorf("failed to verify admin status: %w", err)
+	}
+	if len(count) != 1 {
+		return fmt.Errorf("invalid count result")
+	}
+	if count[0] == 0 {
+		return fmt.Errorf("unauthorized: only admins can add new admins")
+	}
+
+	// Add new admin
+	_, err = table.AdminFingerprints.
+		INSERT(table.AdminFingerprints.Fingerprint).
+		VALUES(String(newAdminFingerprint)).
+		Exec(tx)
+
+	if err != nil {
+		return fmt.Errorf("failed to add admin: %w", err)
+	}
+
+	if err = tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return nil
+}
+
+func RemoveAdmin(db *sql.DB, callerFingerprint, targetFingerprint string) error {
+	tx, err := db.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	// Check if caller is admin
+	var count []int64
+	err = SELECT(COUNT(table.AdminFingerprints.Fingerprint)).
+		FROM(table.AdminFingerprints).
+		WHERE(table.AdminFingerprints.Fingerprint.EQ(String(callerFingerprint))).
+		Query(tx, &count)
+
+	if err != nil {
+		return fmt.Errorf("failed to verify admin status: %w", err)
+	}
+	if len(count) != 1 {
+		return fmt.Errorf("invalid count result")
+	}
+	if count[0] == 0 {
+		return fmt.Errorf("unauthorized: only admins can remove admins")
+	}
+
+	// Check total admin count
+	err = SELECT(COUNT(table.AdminFingerprints.Fingerprint)).
+		FROM(table.AdminFingerprints).
+		Query(tx, &count)
+
+	if err != nil {
+		return fmt.Errorf("failed to count admins: %w", err)
+	}
+	if len(count) != 1 {
+		return fmt.Errorf("invalid count result")
+	}
+	if count[0] <= 1 {
+		return fmt.Errorf("cannot remove last admin")
+	}
+
+	// Remove the admin
+	result, err := table.AdminFingerprints.
+		DELETE().
+		WHERE(table.AdminFingerprints.Fingerprint.EQ(String(targetFingerprint))).
+		Exec(tx)
+
+	if err != nil {
+		return fmt.Errorf("failed to remove admin: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+	if rowsAffected == 0 {
+		return fmt.Errorf("admin not found")
+	}
+
+	if err = tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return nil
+}
+
+type AdminInfo struct {
+	Fingerprint string
+	CreatedAt   int32
+}
+
+func ListAdmins(db *sql.DB, callerFingerprint string) ([]AdminInfo, error) {
+	tx, err := db.Begin()
+	if err != nil {
+		return nil, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	// Check if caller is admin
+	var count []int64
+	err = SELECT(COUNT(table.AdminFingerprints.Fingerprint)).
+		FROM(table.AdminFingerprints).
+		WHERE(table.AdminFingerprints.Fingerprint.EQ(String(callerFingerprint))).
+		Query(tx, &count)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to verify admin status: %w", err)
+	}
+	if len(count) != 1 {
+		return nil, fmt.Errorf("invalid count result")
+	}
+	if count[0] == 0 {
+		return nil, fmt.Errorf("unauthorized: only admins can list admins")
+	}
+
+	// Get all admins
+	var admins []AdminInfo
+	err = SELECT(
+		table.AdminFingerprints.Fingerprint.AS("admin_info.fingerprint"),
+		table.AdminFingerprints.CreatedAt.AS("admin_info.created_at"),
+	).FROM(
+		table.AdminFingerprints,
+	).ORDER_BY(
+		table.AdminFingerprints.CreatedAt.ASC(),
+	).Query(tx, &admins)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to list admins: %w", err)
+	}
+
+	if err = tx.Commit(); err != nil {
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return admins, nil
+}

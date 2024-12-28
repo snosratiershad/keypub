@@ -32,3 +32,11 @@ CREATE TABLE email_permissions (
 
 CREATE INDEX idx_email_permissions_granter ON email_permissions(granter_email);
 CREATE INDEX idx_email_permissions_grantee ON email_permissions(grantee_email);
+
+-- Admin fingerprints table
+CREATE TABLE admin_fingerprints (
+    fingerprint TEXT NOT NULL PRIMARY KEY,  -- SSH key fingerprint of admin
+    created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
+);
+
+CREATE INDEX idx_admin_fingerprints_fp ON admin_fingerprints(fingerprint);
