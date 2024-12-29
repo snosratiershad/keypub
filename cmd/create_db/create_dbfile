@@ -1,1 +1,6 @@
-sqlite3 /home/ubuntu/data/keysdb.sqlite3 < schema.sql
+#!/bin/bash
+
+: "${SQLITE_DSN:=/home/ubuntu/data/keysdb.sqlite3}"
+: "${SCHEMA_FILE:=./schema.sql}"
+
+sqlite3 "$SQLITE_DSN" < "$SCHEMA_FILE"

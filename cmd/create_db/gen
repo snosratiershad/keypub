@@ -1,1 +1,6 @@
-jet -source=sqlite -dsn="/home/ubuntu/data/keysdb.sqlite3" -schema=main -path=../../internal/db/.gen
+#!/bin/bash
+
+: "${SQLITE_DSN:=/home/ubuntu/data/keysdb.sqlite3}"
+: "${DEST_PATH:=../../internal/db/.gen}"
+
+jet -source=sqlite -dsn="$SQLITE_DSN" -schema=main -path="$DEST_PATH"
