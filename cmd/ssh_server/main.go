@@ -38,7 +38,7 @@ func main() {
 	defer ratelimit.Stop()
 
 	// initialize server
-	hostKey, err := loadHostKey(cfg.Server.HostKey)
+	hostKey, err := loadHostKey(cfg.Server.HostKey, cfg.Server.HostKeyPassphrase)
 	if err != nil {
 		log.Fatal(err)
 	}

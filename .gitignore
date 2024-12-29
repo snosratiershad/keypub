@@ -1,3 +1,5 @@
 *.nogit.*
 .*
 keysdb.sqlite3
+keysdb.sqlite3-shm
+keysdb.sqlite3-wal

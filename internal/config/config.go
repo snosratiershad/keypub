@@ -9,8 +9,9 @@ import (
 
 type Config struct {
 	Server struct {
-		Port    int    `json:"port"`
-		HostKey string `json:"host_key_path"`
+		Port              int    `json:"port"`
+		HostKey           string `json:"host_key_path"`
+		HostKeyPassphrase string `json:"host_key_passphrase"`
 	} `json:"server"`
 
 	Database struct {
@@ -54,6 +55,7 @@ func NewConfig() *Config {
 	// Server defaults
 	config.Server.Port = 22
 	config.Server.HostKey = "/home/ubuntu/.keys/.host"
+	config.Server.HostKeyPassphrase = ""
 
 	// Database defaults
 	config.Database.Path = "/home/ubuntu/data/keysdb.sqlite3"
@@ -93,6 +95,7 @@ func NewTestConfig() *Config {
 	// Server test settings
 	config.Server.Port = 2288
 	config.Server.HostKey = "/home/ubuntu/.keys/.host"
+	config.Server.HostKeyPassphrase = ""
 
 	// Database test settings
 	config.Database.Path = "/home/ubuntu/data_test/keysdb.sqlite3"

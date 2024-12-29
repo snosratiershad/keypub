@@ -13,7 +13,7 @@ import (
 	gossh "golang.org/x/crypto/ssh"
 )
 
-func loadHostKey(path string) (ssh.Signer, error) {
+func loadHostKey(path, passphrase string) (ssh.Signer, error) {
 	keyBytes, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -46,7 +46,12 @@ func loadHostKey(path string) (ssh.Signer, error) {
 	}
 
 	log.Printf("Loading existing host key...")
-	signer, err := gossh.ParsePrivateKey(keyBytes)
+	var signer ssh.Signer
+	if passphrase == "" {
+		signer, err = gossh.ParsePrivateKey(keyBytes)
+	} else {
+		signer, err = gossh.ParsePrivateKeyWithPassphrase(keyBytes, []byte(passphrase))
+	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse host key: %w", err)
 	}
