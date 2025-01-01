@@ -99,7 +99,11 @@ func IsAdmin(db *sql.DB, fingerprint string) (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() {
+		if err := tx.Rollback(); err != nil && err != sql.ErrTxDone {
+			log.Printf("failed to rollback transaction: %v", err)
+		}
+	}()
 
 	var count []int64
 	err = SELECT(COUNT(table.AdminFingerprints.Fingerprint)).
@@ -126,7 +130,11 @@ func AddAdmin(db *sql.DB, callerFingerprint, newAdminFingerprint string) (info s
 	if err != nil {
 		return "", fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() {
+		if err := tx.Rollback(); err != nil && err != sql.ErrTxDone {
+			log.Printf("failed to rollback transaction: %v", err)
+		}
+	}()
 
 	// Check if caller is admin
 	var count []int64
@@ -167,7 +175,11 @@ func RemoveAdmin(db *sql.DB, callerFingerprint, targetFingerprint string) (info 
 	if err != nil {
 		return "", fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() {
+		if err := tx.Rollback(); err != nil && err != sql.ErrTxDone {
+			log.Printf("failed to rollback transaction: %v", err)
+		}
+	}()
 
 	// Check if caller is admin
 	var count []int64
@@ -236,7 +248,11 @@ func ListAdmins(db *sql.DB, callerFingerprint string) ([]AdminInfo, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() {
+		if err := tx.Rollback(); err != nil && err != sql.ErrTxDone {
+			log.Printf("failed to rollback transaction: %v", err)
+		}
+	}()
 
 	// Check if caller is admin
 	var count []int64

@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"database/sql"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -64,7 +65,11 @@ func handleWhoami(db *sql.DB, fingerprint string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback() // Rollback if we don't commit
+	defer func() {
+		if err := tx.Rollback(); err != nil && err != sql.ErrTxDone {
+			log.Printf("failed to rollback transaction: %v", err)
+		}
+	}()
 
 	// First get the email for the current fingerprint
 	var userEmails []string
@@ -196,7 +201,11 @@ func handleRegister(db *sql.DB, mail_sender *mail.MailSender, to_email string, f
 	if err != nil {
 		return "", fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback() // Rollback if we don't commit
+	defer func() {
+		if err := tx.Rollback(); err != nil && err != sql.ErrTxDone {
+			log.Printf("failed to rollback transaction: %v", err)
+		}
+	}()
 
 	// Check if email and fingerprint combination exists using COUNT
 	stmt := SELECT(
@@ -287,7 +296,11 @@ func handleConfirm(db *sql.DB, fingerprint string, code string) (info string, er
 	if err != nil {
 		return "", err
 	}
-	defer tx.Rollback() // Will be ignored if transaction is committed
+	defer func() {
+		if err := tx.Rollback(); err != nil && err != sql.ErrTxDone {
+			log.Printf("failed to rollback transaction: %v", err)
+		}
+	}()
 
 	// Get the verification record
 	var emails []string
@@ -360,7 +373,11 @@ func handleUnregister(db *sql.DB, fingerprint string) (info string, err error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback() // Rollback if we don't commit
+	defer func() {
+		if err := tx.Rollback(); err != nil && err != sql.ErrTxDone {
+			log.Printf("failed to rollback transaction: %v", err)
+		}
+	}()
 
 	// First get the user's email
 	var emails []string

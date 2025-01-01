@@ -3,11 +3,13 @@ package main
 import (
 	"database/sql"
 	"fmt"
+	"log"
+
+	cmd "keypub/internal/command"
+	"keypub/internal/db/.gen/table"
 
 	. "github.com/go-jet/jet/v2/sqlite"
 	_ "github.com/mattn/go-sqlite3"
-	cmd "keypub/internal/command"
-	"keypub/internal/db/.gen/table"
 )
 
 func registerCommandLookup(registry *cmd.CommandRegistry) *cmd.CommandRegistry {
@@ -39,7 +41,11 @@ func handleGetEmail(db *sql.DB, callerFingerprint, targetFingerprint string) (st
 	if err != nil {
 		return "", fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback() // Rollback if we don't commit
+	defer func() {
+		if err := tx.Rollback(); err != nil && err != sql.ErrTxDone {
+			log.Printf("failed to rollback transaction: %v", err)
+		}
+	}()
 
 	// First get the caller's email
 	var callerEmails []string

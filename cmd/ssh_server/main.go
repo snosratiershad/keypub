@@ -93,7 +93,7 @@ func main() {
 		// Rate limiting check
 		rl_res := ratelimit.Check(fingerprint)
 		if !rl_res.Allowed {
-			io.WriteString(s, "Error: Rate-limited\n")
+			_, _ = io.WriteString(s, "Error: Rate-limited\n")
 			return
 		}
 
@@ -108,9 +108,9 @@ func main() {
 
 		// Execute command
 		if info, err := cmdRegistry.Execute(ctx); err != nil {
-			io.WriteString(s, fmt.Sprintf("Error: %s\n", err))
+			_, _ = io.WriteString(s, fmt.Sprintf("Error: %s\n", err))
 		} else {
-			io.WriteString(s, fmt.Sprintf("%s\n", info))
+			_, _ = io.WriteString(s, fmt.Sprintf("%s\n", info))
 		}
 	})
 

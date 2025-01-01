@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"fmt"
+	"log"
 
 	cmd "keypub/internal/command"
 	"keypub/internal/db/.gen/table"
@@ -46,7 +47,11 @@ func handleAllow(db *sql.DB, email, fingerprint string) (info string, err error)
 	if err != nil {
 		return "", fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback() // Rollback if we don't commit
+	defer func() {
+		if err := tx.Rollback(); err != nil && err != sql.ErrTxDone {
+			log.Printf("failed to rollback transaction: %v", err)
+		}
+	}()
 
 	// Get the email of the user with the given fingerprint
 	var granterEmails []string
@@ -137,7 +142,11 @@ func handleDeny(db *sql.DB, email, fingerprint string) (info string, err error) 
 	if err != nil {
 		return "", fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback() // Rollback if we don't commit
+	defer func() {
+		if err := tx.Rollback(); err != nil && err != sql.ErrTxDone {
+			log.Printf("failed to rollback transaction: %v", err)
+		}
+	}()
 
 	// Get the email of the user with the given fingerprint
 	var granterEmails []string
