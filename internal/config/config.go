@@ -9,8 +9,9 @@ import (
 
 type Config struct {
 	Server struct {
-		Port    int    `json:"port"`
-		HostKey string `json:"host_key_path"`
+		Port              int    `json:"port"`
+		HostKey           string `json:"host_key_path"`
+		HostKeyPassphrase string `json:"host_key_passphrase"`
 	} `json:"server"`
 
 	Database struct {
@@ -47,28 +48,14 @@ type Config struct {
 	} `json:"backup"`
 }
 
-// LoadConfig loads configuration from a JSON file
-func LoadConfig(path string) (*Config, error) {
-	file, err := os.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("error reading config file: %v", err)
-	}
-
-	var config Config
-	if err := json.Unmarshal(file, &config); err != nil {
-		return nil, fmt.Errorf("error parsing config file: %v", err)
-	}
-
-	return &config, nil
-}
-
 // DefaultConfig returns the default production configuration
-func DefaultConfig() *Config {
+func NewConfig() *Config {
 	config := &Config{}
 
 	// Server defaults
 	config.Server.Port = 22
 	config.Server.HostKey = "/home/ubuntu/.keys/.host"
+	config.Server.HostKeyPassphrase = ""
 
 	// Database defaults
 	config.Database.Path = "/home/ubuntu/data/keysdb.sqlite3"
@@ -102,12 +89,13 @@ func DefaultConfig() *Config {
 }
 
 // TestConfig returns a configuration suitable for testing
-func TestConfig() *Config {
+func NewTestConfig() *Config {
 	config := &Config{}
 
 	// Server test settings
 	config.Server.Port = 2288
 	config.Server.HostKey = "/home/ubuntu/.keys/.host"
+	config.Server.HostKeyPassphrase = ""
 
 	// Database test settings
 	config.Database.Path = "/home/ubuntu/data_test/keysdb.sqlite3"
@@ -129,4 +117,18 @@ func TestConfig() *Config {
 	config.Backup.Enabled = false
 
 	return config
+}
+
+// LoadConfig loads configuration from a JSON file
+func (config *Config) LoadConfig(path string) error {
+	file, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("error reading config file: %v", err)
+	}
+
+	if err := json.Unmarshal(file, &config); err != nil {
+		return fmt.Errorf("error parsing config file: %v", err)
+	}
+
+	return nil
 }

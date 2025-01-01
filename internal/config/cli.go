@@ -100,21 +100,20 @@ func loadConfig(flags flags) (*ConfigResult, error) {
 	var err error
 	var source string
 
-	switch {
-	case *flags.configPath != "":
-		cfg, err = LoadConfig(*flags.configPath)
+	if *flags.useTest {
+		cfg = NewTestConfig()
+		source = "built-in test configuration"
+	} else {
+		cfg = NewConfig()
+		source = "default production configuration"
+	}
+
+	if *flags.configPath != "" {
+		err = cfg.LoadConfig(*flags.configPath)
 		if err != nil {
 			return nil, fmt.Errorf("failed to load config: %v", err)
 		}
 		source = fmt.Sprintf("custom config file: %s", *flags.configPath)
-
-	case *flags.useTest:
-		cfg = TestConfig()
-		source = "built-in test configuration"
-
-	default:
-		cfg = DefaultConfig()
-		source = "default production configuration"
 	}
 
 	return &ConfigResult{
