@@ -42,14 +42,14 @@ func (m *SMTPMailSender) Send(ctx context.Context, to []string, subject, html st
 
 	if m.secure {
 		conn, err := tls.Dial("tcp", addr, &tls.Config{
-			ServerName: addr,
+			ServerName: m.host,
 		})
 		if err != nil {
 			return err
 		}
 		defer conn.Close()
 
-		client, err := smtp.NewClient(conn, addr)
+		client, err := smtp.NewClient(conn, m.host)
 		if err != nil {
 			return err
 		}
