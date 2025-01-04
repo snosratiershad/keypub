@@ -39,14 +39,14 @@
   * Documentation for verification process
 
 ### Configuration Management
-* Move hardcoded constants to configuration system
-  * Database paths
-  * Server ports
-  * Rate limiting parameters
-  * Email settings
-  * File paths
-* Support both config file and environment variables
-* Add configuration validation
+* ~~Move hardcoded constants to configuration system~~
+  * ~~Database paths~~
+  * ~~Server ports~~
+  * ~~Rate limiting parameters~~
+  * ~~Email settings~~
+  * ~~File paths~~
+* ~~Support both config file and environment variables~~ [removed - will support config file only]
+* ~~Add configuration validation~~
 * Add documentation for all configuration options
 
 ### Testing
@@ -84,7 +84,7 @@
 ### Code Quality
 * Fix error handling in JSON marshaling operations
 * Add godoc style comments for all exported functions
-* Implement graceful shutdown handling
+* ~~Implement graceful shutdown handling~~
 * Add request context timeout handling
 * Clean up duplicate constants
 
@@ -99,7 +99,7 @@
 ## Low Priority
 
 ### Developer Experience
-* Add Makefile for common operations
+* ~~Add Makefile for common operations~~
 * Add development environment setup script
 * Add example configuration files
 * Add contribution guidelines
