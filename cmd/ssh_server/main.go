@@ -71,7 +71,7 @@ func main() {
 			log.Fatalf("Could not initialize ResendMailSender: %s", err)
 		}
 	case "smtp":
-		mail_sender = mail.NewSTMPMailSender(
+		mail_sender = mail.NewSMTPMailSender(
 			cfg.Email.SMTP.Host,
 			cfg.Email.SMTP.Port,
 			cfg.Email.SMTP.Username,

@@ -18,7 +18,7 @@ type SMTPMailSender struct {
 	fromName  string
 }
 
-func NewSTMPMailSender(host string, port int, username, password string, secure bool, fromEmail, fromName string) MailSender {
+func NewSMTPMailSender(host string, port int, username, password string, secure bool, fromEmail, fromName string) MailSender {
 	return &SMTPMailSender{
 		host:      host,
 		port:      port,
