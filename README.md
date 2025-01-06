@@ -47,7 +47,7 @@ alias kp='ssh keypub.sh'
 The project is built in Go and uses SQLite for data storage. Key components:
 
 - SSH server implementation using [`gliderlabs/ssh`](https://github.com/gliderlabs/ssh)
-- Email verification using Resend API
+- Email verification using SMTP or Resend API
 - Rate limiting with EWMA ([Exponentially Weighted Moving Average](https://dotat.at/@/2024-09-02-ewma.html))
 - Privacy-focused permission system
 
