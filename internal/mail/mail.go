@@ -16,9 +16,9 @@ const confirmationMailTemplate = `
 	<div style="background-color: #f5f5f5; padding: 15px; border-radius: 5px; margin: 20px 0;">
 		<p style="font-family: monospace; font-size: 16px; margin: 0;">%s...</p>
 	</div>
-	<p>To complete your registration, please use the confirmation number below:</p>
+	<p>To complete your registration, please use the confirmation code below:</p>
 	<div style="background-color: #f5f5f5; padding: 15px; border-radius: 5px; margin: 20px 0;">
-		<p style="font-size: 18px; margin: 0;">Your confirmation number: <strong>%s</strong></p>
+		<p style="font-size: 18px; margin: 0;">Your confirmation code: <strong>%s</strong></p>
 	</div>
 	<p>Run the following command:</p>
 	<pre style="background-color: #f5f5f5; padding: 15px; border-radius: 5px; overflow-x: auto;">ssh keypub.sh confirm %s</pre>

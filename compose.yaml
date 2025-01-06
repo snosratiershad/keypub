@@ -1,0 +1,45 @@
+services:
+  ssh_server:
+    build:
+      dockerfile: Dockerfile
+      context: .
+    ports:
+      - 8022:22
+    volumes:
+      - ./.host:/app/.host
+      - ./keysdb.sqlite3:/app/keysdb.sqlite3
+      - ./config.json:/app/config.json
+    command:
+      - /bin/bash
+      - -c
+      - |
+        # TODO: remove this when moving s3 config from this files to config file
+        echo "minio:9000" > /app/.s3endpoint
+        echo "minioadmin" > /app/.s3access
+        echo "minioadmin" > /app/.s3secret
+        ./ssh_server -config /app/config.json
+  minio:
+    image: minio/minio:latest
+    container_name: minio
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - minio_data:/data
+    command: server /data --console-address ":9001"
+
+  mailhog:
+    image: mailhog/mailhog:latest
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+    environment:
+      MH_STORAGE: "memory"
+      MH_UI_BIND_ADDR: "0.0.0.0:8025"
+      MH_API_BIND_ADDR: "0.0.0.0:8025"
+
+volumes:
+  minio_data:
