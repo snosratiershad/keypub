@@ -58,7 +58,7 @@ type Config struct {
 	} `json:"backup"`
 }
 
-// DefaultConfig returns the default production configuration
+// NewConfig returns the default production configuration
 func NewConfig() *Config {
 	config := &Config{}
 
@@ -99,7 +99,7 @@ func NewConfig() *Config {
 	return config
 }
 
-// TestConfig returns a configuration suitable for testing
+// NewTestConfig returns a configuration suitable for testing
 func NewTestConfig() *Config {
 	config := &Config{}
 

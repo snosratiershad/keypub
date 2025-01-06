@@ -1,0 +1,25 @@
+{
+	"server": {
+    "host_key_path": "./.host"
+	},
+	"database": {
+	  "path": "./keysdb.sqlite3"
+	},
+  "email": {
+    "from_email": "keypub@keypub.sh",
+    "from_name": "keypub",
+    "email_service": "smtp",    
+    "smtp": {
+      "host": "mailhog",
+      "port": 1025,
+      "username": "keypub@keypub.sh",
+      "password": "very_secret_password",
+      "secure": false
+    }
+  },
+  "backup": {
+    "s3_endpoint_path":"./.s3endpoint",
+    "s3_access_path": "./.s3access",
+    "s3_secret_path": "./.s3secret"
+  }
+}

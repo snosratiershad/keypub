@@ -32,7 +32,6 @@ func NewSMTPMailSender(host string, port int, username, password string, secure 
 
 func (m *SMTPMailSender) Send(ctx context.Context, to []string, subject, html string) error {
 	addr := fmt.Sprintf("%s:%d", m.host, m.port)
-	auth := smtp.PlainAuth("", m.username, m.password, m.host)
 	toHeader := strings.Join(to, ", ")
 	from := fmt.Sprintf("%s <%s>", m.fromName, m.fromEmail)
 	message := fmt.Sprintf(
@@ -41,6 +40,7 @@ func (m *SMTPMailSender) Send(ctx context.Context, to []string, subject, html st
 	)
 
 	if m.secure {
+		auth := smtp.PlainAuth("", m.username, m.password, m.host)
 		conn, err := tls.Dial("tcp", addr, &tls.Config{
 			ServerName: m.host,
 		})
@@ -81,6 +81,7 @@ func (m *SMTPMailSender) Send(ctx context.Context, to []string, subject, html st
 			return err
 		}
 	} else {
+		auth := smtp.CRAMMD5Auth(m.username, m.password)
 		err := smtp.SendMail(addr, auth, m.fromEmail, to, []byte(message))
 		if err != nil {
 			return err
