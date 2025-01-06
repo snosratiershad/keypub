@@ -40,7 +40,7 @@ func registerCommandAccount(registry *cmd.CommandRegistry) *cmd.CommandRegistry 
 	})
 	registry.Register(cmd.Command{
 		Name:        "confirm",
-		Usage:       "confirm <email>",
+		Usage:       "confirm <code>",
 		Description: "Confirm your email address using the code you received. This completes your registration.",
 		Category:    "Account",
 		Handler: func(ctx *cmd.CommandContext) (info string, err error) {
