@@ -66,6 +66,11 @@ func handleAllow(db *sql.DB, email, fingerprint string) (info string, err error)
 	if len(granterEmails) == 0 {
 		return "", fmt.Errorf("no user found with fingerprint: %s", fingerprint)
 	}
+	for _, granterEmail := range granterEmails {
+		if granterEmail == email {
+			return "", fmt.Errorf("you can't allow yourself, use whoami instead.")
+		}
+	}
 	if len(granterEmails) > 1 {
 		return "", fmt.Errorf("multiple users found with same fingerprint: %s", fingerprint)
 	}
@@ -160,6 +165,11 @@ func handleDeny(db *sql.DB, email, fingerprint string) (info string, err error) 
 	}
 	if len(granterEmails) == 0 {
 		return "", fmt.Errorf("no user found with fingerprint: %s", fingerprint)
+	}
+	for _, granterEmail := range granterEmails {
+		if granterEmail == email {
+			return "", fmt.Errorf("you can't deny yourself.")
+		}
 	}
 	if len(granterEmails) > 1 {
 		return "", fmt.Errorf("multiple users found with same fingerprint: %s", fingerprint)
