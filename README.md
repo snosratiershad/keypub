@@ -51,6 +51,8 @@ The project is built in Go and uses SQLite for data storage. Key components:
 - Rate limiting with EWMA ([Exponentially Weighted Moving Average](https://dotat.at/@/2024-09-02-ewma.html))
 - Privacy-focused permission system
 
+You can read [INSTALL.md](INSTALL.md) for more info about installation guide
+
 ## License
 
 MIT License - see [LICENSE](LICENSE) file for details
