@@ -1,7 +1,16 @@
 *.nogit.*
-.*
 keysdb.sqlite3
 keysdb.sqlite3-shm
 keysdb.sqlite3-wal
 
 config.json
+
+.gen/
+
+.host
+.host.pub
+.s3endpoint
+.s3access
+.s3secret
+
+vendor/
