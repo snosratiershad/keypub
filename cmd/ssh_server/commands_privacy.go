@@ -1,15 +1,15 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"log"
 
 	cmd "keypub/internal/command"
-	"keypub/internal/db/.gen/table"
+	db "keypub/internal/db/.gen"
 	"keypub/internal/mail"
 
-	. "github.com/go-jet/jet/v2/sqlite"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -35,7 +35,7 @@ func registerCommandRegistration(registry *cmd.CommandRegistry) *cmd.CommandRegi
 	return registry
 }
 
-func handleAllow(db *sql.DB, email, fingerprint string) (info string, err error) {
+func handleAllow(sqlDb *sql.DB, email, fingerprint string) (info string, err error) {
 	// TODO: early exit for self allow
 	// TODO: handle cases with more than 1 mail per fingerprint
 	// Start transaction
@@ -43,7 +43,7 @@ func handleAllow(db *sql.DB, email, fingerprint string) (info string, err error)
 	if err != nil {
 		return "", fmt.Errorf("mail address fails validation")
 	}
-	tx, err := db.Begin()
+	tx, err := sqlDb.Begin()
 	if err != nil {
 		return "", fmt.Errorf("failed to begin transaction: %w", err)
 	}
@@ -54,11 +54,8 @@ func handleAllow(db *sql.DB, email, fingerprint string) (info string, err error)
 	}()
 
 	// Get the email of the user with the given fingerprint
-	var granterEmails []string
-	err = SELECT(table.SSHKeys.Email).
-		FROM(table.SSHKeys).
-		WHERE(table.SSHKeys.Fingerprint.EQ(String(fingerprint))).
-		Query(tx, &granterEmails)
+	granterEmails, err := db.New(sqlDb).WithTx(tx).
+		GetUserEmailsWithFingerprint(context.TODO(), fingerprint)
 
 	if err != nil {
 		return "", fmt.Errorf("failed to query fingerprint owner: %w", err)
@@ -77,52 +74,42 @@ func handleAllow(db *sql.DB, email, fingerprint string) (info string, err error)
 	granterEmail := granterEmails[0]
 
 	// Check if the grantee exists (has any SSH keys)
-	var granteeCount []int64
-	err = SELECT(COUNT(table.SSHKeys.Email)).
-		FROM(table.SSHKeys).
-		WHERE(table.SSHKeys.Email.EQ(String(email))).
-		Query(tx, &granteeCount)
+	granteeCount, err := db.New(sqlDb).WithTx(tx).
+		CountFingerprintWithEmail(context.TODO(), email)
 
 	if err != nil {
 		return "", fmt.Errorf("failed to query grantee existence: %w", err)
 	}
-	if len(granteeCount) != 1 {
-		return "", fmt.Errorf("failed to count grantee records")
-	}
-	if granteeCount[0] == 0 {
+	if granteeCount == 0 {
 		return "", fmt.Errorf("no user found with email: %s", email)
 	}
 
 	// Check if permission already exists
-	var permissionCount []int64
-	err = SELECT(COUNT(table.EmailPermissions.GranterEmail)).
-		FROM(table.EmailPermissions).
-		WHERE(
-			AND(
-				table.EmailPermissions.GranterEmail.EQ(String(granterEmail)),
-				table.EmailPermissions.GranteeEmail.EQ(String(email)),
-			),
-		).
-		Query(tx, &permissionCount)
+	permissionCount, err := db.New(sqlDb).WithTx(tx).
+		CountEmailPermissionsWithGranterAndGranteeEmail(
+			context.TODO(),
+			db.CountEmailPermissionsWithGranterAndGranteeEmailParams{
+				GranterEmail: granterEmail,
+				GranteeEmail: email,
+			},
+		)
 
 	if err != nil {
 		return "", fmt.Errorf("failed to query existing permissions: %w", err)
 	}
-	if len(permissionCount) != 1 {
-		return "", fmt.Errorf("failed to count existing permissions")
-	}
-	if permissionCount[0] > 0 {
+	if permissionCount > 0 {
 		return "permission already exists", nil
 	}
 
 	// Insert new permission
-	_, err = table.EmailPermissions.INSERT(
-		table.EmailPermissions.GranterEmail,
-		table.EmailPermissions.GranteeEmail,
-	).VALUES(
-		granterEmail,
-		email,
-	).Exec(tx)
+	err = db.New(sqlDb).WithTx(tx).
+		AddEmailPermission(
+			context.TODO(),
+			db.AddEmailPermissionParams{
+				GranterEmail: granterEmail,
+				GranteeEmail: email,
+			},
+		)
 
 	if err != nil {
 		return "", fmt.Errorf("failed to insert permission: %w", err)
@@ -136,14 +123,14 @@ func handleAllow(db *sql.DB, email, fingerprint string) (info string, err error)
 	return fmt.Sprintf("Success: user %s can read your email address", email), nil
 }
 
-func handleDeny(db *sql.DB, email, fingerprint string) (info string, err error) {
+func handleDeny(sqlDb *sql.DB, email, fingerprint string) (info string, err error) {
 	// TODO: handle cases with more than 1 mail per fingerprint
 	// Start transaction
 	err = mail.ValidateEmail(email)
 	if err != nil {
 		return "", fmt.Errorf("mail address fails validation")
 	}
-	tx, err := db.Begin()
+	tx, err := sqlDb.Begin()
 	if err != nil {
 		return "", fmt.Errorf("failed to begin transaction: %w", err)
 	}
@@ -154,11 +141,8 @@ func handleDeny(db *sql.DB, email, fingerprint string) (info string, err error) 
 	}()
 
 	// Get the email of the user with the given fingerprint
-	var granterEmails []string
-	err = SELECT(table.SSHKeys.Email).
-		FROM(table.SSHKeys).
-		WHERE(table.SSHKeys.Fingerprint.EQ(String(fingerprint))).
-		Query(tx, &granterEmails)
+	granterEmails, err := db.New(sqlDb).WithTx(tx).
+		GetUserEmailsWithFingerprint(context.TODO(), fingerprint)
 
 	if err != nil {
 		return "", fmt.Errorf("failed to query fingerprint owner: %w", err)
@@ -177,26 +161,19 @@ func handleDeny(db *sql.DB, email, fingerprint string) (info string, err error) 
 	granterEmail := granterEmails[0]
 
 	// Delete the permission
-	result, err := table.EmailPermissions.DELETE().
-		WHERE(
-			AND(
-				table.EmailPermissions.GranterEmail.EQ(String(granterEmail)),
-				table.EmailPermissions.GranteeEmail.EQ(String(email)),
-			),
-		).
-		Exec(tx)
+	// TODO: sqlc by default ignores the sql result in delete query
+	// which we need to check affected rows.
+	err = db.New(sqlDb).WithTx(tx).
+		DeleteEmailPermissionsWithGranterAndGranteeEmail(
+			context.TODO(),
+			db.DeleteEmailPermissionsWithGranterAndGranteeEmailParams{
+				GranterEmail: granterEmail,
+				GranteeEmail: email,
+			},
+		)
 
 	if err != nil {
 		return "", fmt.Errorf("failed to delete permission: %w", err)
-	}
-
-	// Check if any rows were affected
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		return "", fmt.Errorf("failed to get rows affected: %w", err)
-	}
-	if rowsAffected == 0 {
-		return "", fmt.Errorf("no permission found for email: %s", email)
 	}
 
 	// Commit transaction
