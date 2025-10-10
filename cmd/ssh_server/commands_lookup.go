@@ -1,14 +1,14 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"log"
 
 	cmd "keypub/internal/command"
-	"keypub/internal/db/.gen/table"
+	db "keypub/internal/db/.gen"
 
-	. "github.com/go-jet/jet/v2/sqlite"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -34,10 +34,10 @@ func registerCommandLookup(registry *cmd.CommandRegistry) *cmd.CommandRegistry {
 	return registry
 }
 
-func handleGetEmail(db *sql.DB, callerFingerprint, targetFingerprint string) (string, error) {
+func handleGetEmail(sqlDb *sql.DB, callerFingerprint, targetFingerprint string) (string, error) {
 	// TODO: handle cases with more than 1 mail per fingerprint
 	// Start transaction
-	tx, err := db.Begin()
+	tx, err := sqlDb.Begin()
 	if err != nil {
 		return "", fmt.Errorf("failed to begin transaction: %w", err)
 	}
@@ -48,11 +48,8 @@ func handleGetEmail(db *sql.DB, callerFingerprint, targetFingerprint string) (st
 	}()
 
 	// First get the caller's email
-	var callerEmails []string
-	err = SELECT(table.SSHKeys.Email).
-		FROM(table.SSHKeys).
-		WHERE(table.SSHKeys.Fingerprint.EQ(String(callerFingerprint))).
-		Query(tx, &callerEmails)
+	callerEmails, err := db.New(sqlDb).WithTx(tx).
+		GetUserEmailsWithFingerprint(context.TODO(), callerFingerprint)
 
 	if err != nil {
 		return "", fmt.Errorf("failed to query caller info: %w", err)
@@ -65,30 +62,15 @@ func handleGetEmail(db *sql.DB, callerFingerprint, targetFingerprint string) (st
 	}
 	callerEmail := callerEmails[0]
 
-	// Get target's email and check permissions
-	type TargetInfo struct {
-		Email string
-	}
-	var targetInfo []TargetInfo
-	err = SELECT(
-		table.SSHKeys.Email.AS("target_info.email"),
-	).FROM(
-		table.SSHKeys.
-			LEFT_JOIN(table.EmailPermissions, AND(
-				table.EmailPermissions.GranterEmail.EQ(table.SSHKeys.Email),
-				table.EmailPermissions.GranteeEmail.EQ(String(callerEmail)),
-			)),
-	).WHERE(
-		AND(
-			table.SSHKeys.Fingerprint.EQ(String(targetFingerprint)),
-			OR(
-				// Either the caller is looking up their own email
-				table.SSHKeys.Email.EQ(String(callerEmail)),
-				// Or they have permission
-				table.EmailPermissions.GranteeEmail.IS_NOT_NULL(),
-			),
-		),
-	).Query(tx, &targetInfo)
+	targetInfo, err := db.New(sqlDb).WithTx(tx).
+		GetTargetInfoWithFingerprintAndGranterEmailAndGranteeEmail(
+			context.TODO(),
+			db.GetTargetInfoWithFingerprintAndGranterEmailAndGranteeEmailParams{
+				GranteeEmail: callerEmail,
+				Email:        callerEmail,
+				Fingerprint:  targetFingerprint,
+			},
+		)
 
 	if err != nil {
 		return "", fmt.Errorf("failed to query target info: %w", err)
@@ -105,5 +87,5 @@ func handleGetEmail(db *sql.DB, callerFingerprint, targetFingerprint string) (st
 		return "", fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
-	return targetInfo[0].Email, nil
+	return targetInfo[0], nil
 }
