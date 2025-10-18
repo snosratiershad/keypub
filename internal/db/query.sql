@@ -165,3 +165,11 @@ WHERE
         ssh_keys.email = ?
         OR email_permissions.grantee_email IS NOT NULL
     );
+
+-- name: CountVerificationCodeWithFingerprint :one 
+SELECT
+	COUNT(fingerprint)
+FROM
+	verification_codes
+WHERE
+	fingerprint = ?;
