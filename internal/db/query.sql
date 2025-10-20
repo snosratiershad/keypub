@@ -173,3 +173,8 @@ FROM
 	verification_codes
 WHERE
 	fingerprint = ?;
+
+-- name: DeleteVerificationCodesOlderThanDuration :exec
+DELETE FROM verification_codes
+WHERE
+	created_at <= ?;
